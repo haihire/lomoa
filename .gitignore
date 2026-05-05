@@ -48,4 +48,7 @@ crawlers/logs/
 # TypeScript 빌드 캐시
 server/tsconfig.tsbuildinfo
 server/tsconfig.build.tsbuildinfo
+
+# 이력서 (로컬 개인정보)
+이력서_개선안.md
 server/dist/

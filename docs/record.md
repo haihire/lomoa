@@ -305,6 +305,86 @@ docker compose up -d nest
 
 ---
 
+## 문제 11. 캐릭터 특성 빌드 API에 캐시가 없어 매 요청마다 DB 쿼리 발생
+
+**문제**
+`GET /api/characters/stat-builds`는 전체 빌드 통계를 집계하는 무거운 쿼리를 실행하는데,
+캐시 없이 매 요청마다 DB를 직접 조회했다.
+사용자가 페이지를 열 때마다 동일 결과를 반복 계산해 응답이 느렸다.
+
+**고민**
+
+- 통계 데이터는 실시간성이 크게 요구되지 않으므로, 일정 시간 동안 결과를 재사용해도 무방함
+- 이미 다른 모듈(StreamersModule, SitesModule)에서 Redis 캐시를 사용 중이므로 같은 패턴 적용 가능
+- 캐시 TTL은 데이터 갱신 주기(크롤러 실행 간격)보다 짧게 설정해야 fresh한 상태 유지
+
+**해결**
+
+1. `CharactersModule`에 `RedisModule` import 추가
+2. `CharactersService` 생성자에 `@Inject(REDIS_CLIENT) private readonly redis: Redis` 주입
+3. `findStatBuilds()` 실행 시:
+   - Redis `characters:stat-builds` 키 히트 → JSON 파싱 후 즉시 반환
+   - 캐시 미스 → DB 쿼리 실행 → 결과를 TTL 3600초(1시간)로 Redis 저장
+4. 단위 테스트에 `REDIS_CLIENT` mock(`get: jest.fn().mockResolvedValue(null)`, `set: jest.fn()`) 추가, 14개 테스트 모두 통과
+
+**결과**
+
+- 캐시 히트 시 DB 쿼리 없이 Redis에서 즉시 반환, 응답 속도 대폭 개선
+- 캐시 미스 시에만 DB 집계 쿼리 실행 → DB 부하 감소
+- 기존 테스트 구조 유지, mock 추가만으로 테스트 통과
+
+---
+
+## 문제 12. 카카오 리프레시 토큰 만료 시 알림 자체가 중단되는 닭-달걀 문제
+
+**문제**
+카카오 나에게 보내기 알림은 리프레시 토큰 → 액세스 토큰 → 메시지 전송 순으로 동작한다.
+리프레시 토큰이 만료되면 액세스 토큰 발급 자체가 불가하므로, 만료 알림조차 보낼 수 없는 구조였다.
+토큰 유효기간은 60일이고, 수동으로 EC2 `.env`를 갱신하지 않으면 서비스 알림 기능 전체가 조용히 중단되었다.
+
+**고민**
+
+- 만료 이전에 미리 갱신해야 하는데, 언제 갱신할지 기준이 필요함
+- Kakao는 만료 30일 전부터 토큰 갱신 API 응답에 새 리프레시 토큰을 자동으로 포함시켜 주므로, 이 시점을 활용할 수 있음
+- 갱신된 토큰을 컨테이너 내부에서 `process.env`에 반영해도, 컨테이너 재시작 시 `.env` 파일이 기준이므로 파일에도 저장해야 함
+- Docker `env_file`은 컨테이너 시작 시점에만 읽으므로, 실행 중 파일을 수정해도 반영되지 않음 → 볼륨 마운트로 호스트-컨테이너 파일을 공유해야 재시작 후에도 유지됨
+
+**해결**
+
+1. `kakao.service.ts`의 `getAccessToken()`:
+   - Kakao 응답에 `refresh_token`이 포함되어 있으면 즉시 `updateRefreshToken()` 호출
+
+2. `updateRefreshToken()` 신규 구현:
+   - `process.env.KAKAO_REFRESH_TOKEN` 즉시 교체 (런타임 반영)
+   - `process.env.KAKAO_REFRESH_TOKEN_ISSUED_AT` 오늘 날짜로 교체
+   - `/app/.env` 파일을 정규식으로 읽어 두 항목 모두 교체 후 저장 (재시작 후에도 유지)
+   - 카톡 알림 "✅ 리프레시 토큰 자동 갱신 완료 / 새 만료일: ..."
+
+3. `checkRefreshTokenExpiry()` 크론 신규 구현:
+   - `@Cron('0 0 9 * * *')` — 매일 오전 9시 실행
+   - `KAKAO_REFRESH_TOKEN_ISSUED_AT` 기준 잔여일 계산
+   - D-7 이내: 강제 갱신 시도 → 실패 시 수동 안내 알림("⚠️ 리프레시 토큰 만료 D-N...")
+
+4. `docker-compose.yml` nest 서비스에 볼륨 마운트 추가:
+
+   ```yaml
+   volumes:
+     - ./.env:/app/.env
+   ```
+
+   컨테이너 내부 파일 수정이 호스트에 즉시 반영되어 재시작 후에도 새 토큰 유지
+
+5. EC2 `.env`에 `KAKAO_REFRESH_TOKEN_ISSUED_AT=2026-05-05` 수동 추가 후 컨테이너 재시작
+
+**결과**
+
+- Kakao가 응답에 새 토큰을 포함하는 시점(만료 30일 전 이후)부터 자동 갱신
+- 매일 오전 9시 D-7 체크로 자동 갱신 실패 시에도 수동 안내 알림 수신 가능
+- 볼륨 마운트로 컨테이너 재시작 후에도 갱신된 토큰 유지
+- 사람이 개입하지 않아도 60일 주기로 토큰이 자동 연장되는 구조 확보
+
+---
+
 # 크롤러 개발 - 고민한 문제와 해결 과정
 
 ---

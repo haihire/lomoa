@@ -4,9 +4,6 @@ import SiteList from "@/components/sites/SiteList";
 import YoutubeSection from "@/components/youtube/YoutubeSection";
 import type { Site, StatBuildTab } from "@/types";
 
-// Vercel 함수 리전: 서울(icn1) 고정 — API(EC2 한국)와 왕복 지연 최소화
-export const preferredRegion = "icn1";
-
 // ISR: NestJS 서버에서 데이터를 fetch (revalidate 주기마다 백그라운드 갱신)
 const API = process.env.NEST_API_URL ?? "http://localhost:3001";
 

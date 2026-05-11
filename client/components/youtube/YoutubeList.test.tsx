@@ -72,8 +72,10 @@ describe("YoutubeList", () => {
     await waitFor(() => {
       const prevBtn = screen.getByRole("button", { name: "이전" });
       const nextBtn = screen.getByRole("button", { name: "다음" });
+      const refreshBtn = screen.getByRole("button", { name: "새로고침" });
       expect(prevBtn).toBeDisabled();
       expect(nextBtn).toBeDisabled();
+      expect(refreshBtn).toBeDisabled();
     });
   });
 

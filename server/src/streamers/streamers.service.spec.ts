@@ -69,7 +69,7 @@ describe('StreamersService', () => {
           thumbnailUrl: 'https://example.com/thumb.jpg',
           publishedAt: '2026-04-28T00:00:00Z',
           duration: '10:00',
-          viewCount: 999,
+          viewCount: 1500,
         },
       ],
       nextPageToken: null,

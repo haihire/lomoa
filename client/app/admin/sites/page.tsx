@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 interface Site {
   seq: number;
@@ -31,7 +31,7 @@ export default function AdminSitesPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     const res = await fetch("/api/admin/sites", { cache: "no-store" });
     if (!res.ok) {
@@ -41,11 +41,12 @@ export default function AdminSitesPage() {
     }
     setSites((await res.json()) as Site[]);
     setLoading(false);
-  }
+  }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
-  }, []);
+  }, [load]);
 
   function startEdit(site: Site) {
     setEditingId(site.seq);

@@ -10,6 +10,7 @@ import { KakaoModule } from './kakao/kakao.module';
 import { StreamersModule } from './streamers/streamers.module';
 import { UsersModule } from './users/users.module';
 import { ClassSummaryModule } from './class-summary/class-summary.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ClassSummaryModule } from './class-summary/class-summary.module';
     StreamersModule,
     UsersModule,
     ClassSummaryModule,
+    AdminModule,
   ],
 })
 export class AppModule {}

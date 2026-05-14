@@ -3,7 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { google } from 'googleapis';
 import Redis, { type Redis as RedisClient } from 'ioredis';
+import type { Pool, RowDataPacket } from 'mysql2/promise';
 import { isLocalQuotaApisDisabled } from '../common/local-dev-flags';
+import { DB_POOL } from '../db/db.module';
 import { REDIS_CLIENT } from '../redis/redis.module';
 
 const CACHE_PREFIX = 'youtube:videos:page:';
@@ -110,6 +112,7 @@ export class StreamersService implements OnModuleInit {
 
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: RedisClient,
+    @Inject(DB_POOL) private readonly db: Pool,
     private readonly config: ConfigService,
   ) {
     const keys: string[] = [];
@@ -258,6 +261,8 @@ export class StreamersService implements OnModuleInit {
         CACHE_TTL,
       );
       this.logger.log(`YouTube 인기 영상 ${allItems.length}건 캐시 저장`);
+      // 조회수 스냅샷 저장
+      await this.snapshotViewCounts(allItems);
     } catch (err: unknown) {
       const apiErr = toYoutubeApiError(err);
       const status = apiErr.response?.status;
@@ -274,6 +279,59 @@ export class StreamersService implements OnModuleInit {
           `YouTube 할당량 초과 — ${Math.ceil(ttl / 60)}분 후 자동 재개`,
         );
       }
+    }
+  }
+
+  /** 현재 인기 영상의 조회수를 오늘 날짜로 DB에 저장 (UPSERT) */
+  async snapshotViewCounts(items: YoutubeVideoItem[]): Promise<void> {
+    if (items.length === 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      const values = items.map((v) => [
+        v.videoId,
+        v.title,
+        v.channelTitle,
+        v.thumbnailUrl,
+        v.publishedAt.slice(0, 10), // DATE 형식 (YYYY-MM-DD)
+        v.duration,
+        v.viewCount,
+        today,
+      ]);
+      await this.db.query(
+        `INSERT INTO youtube_view_snapshots
+           (video_id, title, channel_title, thumbnail_url, published_at, duration, view_count, recorded_date)
+         VALUES ?
+         ON DUPLICATE KEY UPDATE view_count = VALUES(view_count)`,
+        [values],
+      );
+      this.logger.log(
+        `YouTube 조회수 스냅샷 ${items.length}건 저장 (${today})`,
+      );
+    } catch (err: unknown) {
+      this.logger.error(`YouTube 스냅샷 저장 실패: ${toErrorMessage(err)}`);
+    }
+  }
+
+  /** 날짜별 평균 조회수 히스토리 반환 */
+  async getViewHistory(days: number): Promise<{ date: string; avg: number }[]> {
+    const safeDay = Math.min(Math.max(1, days), 365);
+    try {
+      const [rows] = await this.db.query<
+        Array<RowDataPacket & { date: string; avg: number }>
+      >(
+        `SELECT
+           DATE_FORMAT(recorded_date, '%Y-%m-%d') AS date,
+           ROUND(AVG(view_count))                 AS avg
+         FROM youtube_view_snapshots
+         WHERE recorded_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+         GROUP BY recorded_date
+         ORDER BY recorded_date ASC`,
+        [safeDay],
+      );
+      return rows;
+    } catch (err: unknown) {
+      this.logger.error(`YouTube 히스토리 조회 실패: ${toErrorMessage(err)}`);
+      return [];
     }
   }
 

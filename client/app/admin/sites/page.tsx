@@ -182,21 +182,40 @@ export default function AdminSitesPage() {
     await load();
   }
 
+  const [purging, setPurging] = useState(false);
+
+  async function handlePurge() {
+    setPurging(true);
+    await purgeSitesCache();
+    setPurging(false);
+    alert("사이트 캐시가 무효화됐습니다.");
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold">사이트 관리</h1>
-        <button
-          onClick={() => {
-            setShowForm(true);
-            setEditingId(null);
-            setForm(EMPTY_FORM);
-            setFormError("");
-          }}
-          className="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded transition-colors"
-        >
-          + 사이트 추가
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handlePurge}
+            disabled={purging}
+            className="text-sm bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-300 px-3 py-2 rounded transition-colors"
+            title="Redis 사이트 캐시 즉시 삭제"
+          >
+            {purging ? "처리 중..." : "새로고침"}
+          </button>
+          <button
+            onClick={() => {
+              setShowForm(true);
+              setEditingId(null);
+              setForm(EMPTY_FORM);
+              setFormError("");
+            }}
+            className="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded transition-colors"
+          >
+            + 사이트 추가
+          </button>
+        </div>
       </div>
 
       {/* 모달 */}

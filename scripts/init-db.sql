@@ -1,6 +1,15 @@
 -- Lost Ark DB 초기화 스크립트
 -- 실행: mariadb -u root -p lost_ark < scripts/init-db.sql
 
+-- 관리자 계정 테이블
+CREATE TABLE IF NOT EXISTS admin_users (
+  id            INT AUTO_INCREMENT PRIMARY KEY,
+  username      VARCHAR(50)  NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  role          ENUM('master','guest') NOT NULL DEFAULT 'guest',
+  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 CREATE DATABASE IF NOT EXISTS lost_ark
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
@@ -33,6 +42,7 @@ CREATE TABLE IF NOT EXISTS loa_users (
   seq             INT AUTO_INCREMENT PRIMARY KEY,
   server          VARCHAR(50)  COLLATE utf8mb4_general_ci,
   level           FLOAT,
+  combat_power    DECIMAL(10,2),
   class           INT,
   thesix          INT,
   name            VARCHAR(50)  COLLATE utf8mb4_general_ci,

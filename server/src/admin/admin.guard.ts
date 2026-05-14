@@ -7,13 +7,17 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
-import { AdminAuthService, AdminRole } from './admin-auth.service';
+import {
+  AdminAuthService,
+  AdminRole,
+  AdminSessionPayload,
+} from './admin-auth.service';
 
 export const REQUIRE_OWNER = 'requireOwner';
 
 /** @RequireOwner() — owner 전용 엔드포인트에 붙이는 데코레이터 */
 export const RequireOwner = () =>
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
   (Reflect as any).metadata(REQUIRE_OWNER, true);
 
 @Injectable()
@@ -46,7 +50,7 @@ export class AdminGuard implements CanActivate {
     }
 
     // 요청 객체에 사용자 정보 주입
-    (req as any).adminUser = payload;
+    (req as Request & { adminUser: AdminSessionPayload }).adminUser = payload;
     return true;
   }
 }
@@ -69,12 +73,12 @@ export class AdminWriteGuard implements CanActivate {
       throw new UnauthorizedException('유효하지 않은 세션입니다');
     }
 
-    const role = payload.role as AdminRole;
+    const role: AdminRole = payload.role;
     if (role === 'guest') {
       throw new ForbiddenException('게스트 계정은 읽기 전용입니다');
     }
 
-    (req as any).adminUser = payload;
+    (req as Request & { adminUser: AdminSessionPayload }).adminUser = payload;
     return true;
   }
 }

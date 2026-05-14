@@ -282,6 +282,22 @@ export class StreamersService implements OnModuleInit {
     }
   }
 
+  /**
+   * Redis 인기 영상 캐시를 읽어 즉시 스냅샷 저장.
+   * LOCAL_DISABLE_QUOTA_APIS=true 환경에서 수동으로 스냅샷 데이터 생성용.
+   */
+  async snapshotFromCache(): Promise<{ saved: number; cached: boolean }> {
+    const cached = await this.youtubeRedis.get(POPULAR_CACHE_KEY);
+    if (!cached) {
+      this.logger.warn('YouTube 스냅샷 수동 저장: Redis 캐시 없음');
+      return { saved: 0, cached: false };
+    }
+    const parsed = JSON.parse(cached) as { items: YoutubeVideoItem[] };
+    const items = parsed.items ?? [];
+    await this.snapshotViewCounts(items);
+    return { saved: items.length, cached: true };
+  }
+
   /** 현재 인기 영상의 조회수를 오늘 날짜로 DB에 저장 (UPSERT) */
   async snapshotViewCounts(items: YoutubeVideoItem[]): Promise<void> {
     if (items.length === 0) return;

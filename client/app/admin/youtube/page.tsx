@@ -184,6 +184,32 @@ export default function AdminYoutubePage() {
     setTimeout(() => setPurgeResult("idle"), 3000);
   }
 
+  const [snapshotting, setSnapshotting] = useState(false);
+  const [snapshotResult, setSnapshotResult] = useState<
+    "idle" | "done" | "empty" | "error"
+  >("idle");
+
+  async function handleSnapshot() {
+    setSnapshotting(true);
+    setSnapshotResult("idle");
+    try {
+      const res = await fetch("/api/admin/cache/snapshot-youtube", {
+        method: "POST",
+      });
+      if (!res.ok) {
+        setSnapshotResult("error");
+        return;
+      }
+      const data = (await res.json()) as { saved: number; cached: boolean };
+      setSnapshotResult(data.cached && data.saved > 0 ? "done" : "empty");
+    } catch {
+      setSnapshotResult("error");
+    } finally {
+      setSnapshotting(false);
+      setTimeout(() => setSnapshotResult("idle"), 3000);
+    }
+  }
+
   // 정렬된 목록
   const filtered = useMemo(() => {
     const arr = [...items];
@@ -255,6 +281,23 @@ export default function AdminYoutubePage() {
           {purgeResult === "error" && (
             <span className="text-xs text-red-400">✗ 오류</span>
           )}
+          {snapshotResult === "done" && (
+            <span className="text-xs text-green-400">✓ 스냅샷 저장 완료</span>
+          )}
+          {snapshotResult === "empty" && (
+            <span className="text-xs text-yellow-400">⚠ 캐시 없음</span>
+          )}
+          {snapshotResult === "error" && (
+            <span className="text-xs text-red-400">✗ 스냅샷 오류</span>
+          )}
+          <button
+            onClick={handleSnapshot}
+            disabled={snapshotting}
+            className="text-sm bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 text-white px-3 py-1.5 rounded transition-colors"
+            title="현재 Redis 캐시의 인기 영상 조회수를 DB에 즉시 스냅샷 저장 (UPSERT)"
+          >
+            {snapshotting ? "저장 중..." : "스냅샷 저장"}
+          </button>
           <button
             onClick={handlePurge}
             disabled={purging}

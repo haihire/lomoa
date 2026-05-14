@@ -9,6 +9,7 @@ import {
 import type { Redis } from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { AdminWriteGuard } from './admin.guard';
+import { StreamersService } from '../streamers/streamers.service';
 
 const CACHE_KEYS: Record<string, string> = {
   sites: 'sites:all',
@@ -19,7 +20,10 @@ const CACHE_KEYS: Record<string, string> = {
 @Controller('api/admin/cache')
 @UseGuards(AdminWriteGuard)
 export class AdminCacheController {
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+  constructor(
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly streamersService: StreamersService,
+  ) {}
 
   @Post('purge')
   async purge(@Body() body: { key?: string }) {
@@ -45,5 +49,16 @@ export class AdminCacheController {
       deleted: results.reduce((a, b) => a + b, 0),
       keys,
     };
+  }
+
+  /**
+   * POST /api/admin/cache/snapshot-youtube
+   * Redis youtube:popular:first 캐시를 읽어 즉시 DB에 조회수 스냅샷 저장.
+   * 같은 날 재실행 시 view_count만 갱신 (UPSERT).
+   */
+  @Post('snapshot-youtube')
+  async snapshotYoutube() {
+    const result = await this.streamersService.snapshotFromCache();
+    return { ok: true, ...result };
   }
 }

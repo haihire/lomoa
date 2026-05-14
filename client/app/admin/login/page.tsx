@@ -10,15 +10,14 @@ export default function AdminLoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function login(u: string, p: string) {
     setError("");
     setLoading(true);
     try {
       const res = await fetch("/api/admin/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username: u, password: p }),
       });
       if (!res.ok) {
         const data = (await res.json()) as { message?: string };
@@ -32,6 +31,15 @@ export default function AdminLoginPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await login(username, password);
+  }
+
+  async function handleGuestLogin() {
+    await login("guest", "1237");
   }
 
   return (
@@ -70,6 +78,14 @@ export default function AdminLoginPage() {
             className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded py-2 text-sm font-medium transition-colors"
           >
             {loading ? "로그인 중..." : "로그인"}
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={handleGuestLogin}
+            className="w-full bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-300 rounded py-2 text-sm font-medium transition-colors"
+          >
+            게스트로 둘러보기
           </button>
         </form>
       </div>

@@ -16,7 +16,7 @@ export class StreamersController {
 
   /**
    * GET /api/streamers/popular
-   * 로스트아크 최근 30일 동영상 조회수순 (Redis 2시간 캐시)
+   * 로스트아크 최근 7일 동영상 게시일순 (Redis 4시간 캐시)
    */
   @Get('popular')
   @Header('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=300')
@@ -30,5 +30,15 @@ export class StreamersController {
       Number.isNaN(offset) ? 0 : offset,
       Number.isNaN(limit) ? 0 : limit,
     );
+  }
+
+  /**
+   * GET /api/streamers/view-history?days=30
+   * 날짜별 평균 조회수 히스토리 (DB 기반)
+   */
+  @Get('view-history')
+  getViewHistory(@Query('days') daysRaw?: string) {
+    const days = Number.parseInt(daysRaw ?? '30', 10);
+    return this.streamersService.getViewHistory(Number.isNaN(days) ? 30 : days);
   }
 }

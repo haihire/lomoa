@@ -83,6 +83,22 @@ export default function AdminCharactersPage() {
     void load(1);
   }
 
+  const [purging, setPurging] = useState(false);
+
+  async function handlePurge() {
+    setPurging(true);
+    try {
+      await fetch("/api/admin/cache", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "characters" }),
+      });
+      alert("캐릭터 캐시가 무효화됐습니다.");
+    } finally {
+      setPurging(false);
+    }
+  }
+
   const totalPages = result ? Math.ceil(result.total / PAGE_SIZE) : 1;
 
   return (
@@ -92,9 +108,19 @@ export default function AdminCharactersPage() {
     >
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-semibold">캐릭터 목록</h1>
-        <span className="text-xs text-gray-500">
-          총 {result?.total.toLocaleString() ?? "-"}명
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-500">
+            총 {result?.total.toLocaleString() ?? "-"}명
+          </span>
+          <button
+            onClick={handlePurge}
+            disabled={purging}
+            className="text-sm bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-300 px-3 py-1.5 rounded transition-colors"
+            title="Redis 캐릭터 캐시 즉시 삭제"
+          >
+            {purging ? "처리 중..." : "새로고침"}
+          </button>
+        </div>
       </div>
 
       {/* 필터 */}

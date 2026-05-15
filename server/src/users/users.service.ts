@@ -3,6 +3,7 @@ import type { Pool } from 'mysql2/promise';
 import type { RowDataPacket } from 'mysql2';
 import { DB_POOL } from '../db/db.module';
 import { LostarkService } from '../lostark/lostark.service';
+import { classifyStatBuild } from '../characters/characters.service';
 
 interface Sibling {
   ServerName: string;
@@ -253,7 +254,7 @@ export class UsersService {
     // 5. 원정대 전체를 단일 배치 INSERT (N번 → 1번)
     if (buffer.length > 0) {
       const placeholders = buffer
-        .map(() => '(?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        .map(() => '(?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
         .join(',');
       const params = buffer.flatMap((r) => [
         r.server,
@@ -269,11 +270,12 @@ export class UsersService {
         r.statCrit,
         r.statSpec,
         r.statSwift,
+        classifyStatBuild(r.statCrit, r.statSpec, r.statSwift),
       ]);
       await this.pool.execute(
         `INSERT INTO loa_users
            (server, name, level, combat_power, class, thesix, expedition_key,
-            core_sun, core_moon, core_star, stat_crit, stat_spec, stat_swift)
+            core_sun, core_moon, core_star, stat_crit, stat_spec, stat_swift, stat_build)
          VALUES ${placeholders}
          ON DUPLICATE KEY UPDATE
            level          = VALUES(level),
@@ -286,7 +288,12 @@ export class UsersService {
            core_star      = COALESCE(VALUES(core_star), core_star),
            stat_crit      = COALESCE(NULLIF(VALUES(stat_crit),  0), stat_crit),
            stat_spec      = COALESCE(NULLIF(VALUES(stat_spec),  0), stat_spec),
-           stat_swift     = COALESCE(NULLIF(VALUES(stat_swift), 0), stat_swift)`,
+           stat_swift     = COALESCE(NULLIF(VALUES(stat_swift), 0), stat_swift),
+           stat_build     = IF(
+             VALUES(stat_crit) = 0 AND VALUES(stat_spec) = 0 AND VALUES(stat_swift) = 0,
+             stat_build,
+             VALUES(stat_build)
+           )`,
         params,
       );
     }

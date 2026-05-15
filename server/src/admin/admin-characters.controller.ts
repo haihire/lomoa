@@ -15,6 +15,7 @@ interface CharacterRow extends RowDataPacket {
   statCrit: number;
   statSpec: number;
   statSwift: number;
+  statBuild: string | null;
   thesix: number;
   coreSun: string | null;
   coreMoon: string | null;
@@ -52,6 +53,10 @@ export class AdminCharactersController {
       conditions.push('c.class_detail = ?');
       params.push(classDetailFilter);
     }
+    if (statBuildFilter) {
+      conditions.push('u.stat_build = ?');
+      params.push(statBuildFilter);
+    }
 
     const where =
       conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -66,6 +71,7 @@ export class AdminCharactersController {
       u.stat_crit       AS statCrit,
       u.stat_spec       AS statSpec,
       u.stat_swift      AS statSwift,
+      u.stat_build      AS statBuild,
       u.thesix,
       ag_sun.core       AS coreSun,
       ag_moon.core      AS coreMoon,
@@ -89,33 +95,17 @@ export class AdminCharactersController {
       statCrit: r.statCrit,
       statSpec: r.statSpec,
       statSwift: r.statSwift,
-      statBuild: classifyStatBuild(r.statCrit, r.statSpec, r.statSwift),
+      // 컬럼이 채워져 있으면 그대로 사용, 비어 있으면(레거시 데이터) 즉석 계산.
+      statBuild:
+        r.statBuild && r.statBuild.length > 0
+          ? r.statBuild
+          : classifyStatBuild(r.statCrit, r.statSpec, r.statSwift),
       thesix: r.thesix === 1,
       coreSun: r.coreSun ?? null,
       coreMoon: r.coreMoon ?? null,
       coreStar: r.coreStar ?? null,
     });
 
-    // statBuild 필터가 있는 경우: SQL에서 직접 필터 불가하므로
-    // 검색/직업 조건에 매칭되는 전체 행을 가져와 메모리에서 분류 후 페이징.
-    if (statBuildFilter) {
-      const [rows] = await this.pool.execute<CharacterRow[]>(
-        `SELECT ${selectColumns}
-         ${fromJoin}
-         ${where}
-         ORDER BY u.level DESC`,
-        params,
-      );
-      const classified = rows
-        .map(mapRow)
-        .filter((i) => i.statBuild === statBuildFilter);
-      const total = classified.length;
-      const offset = (pageNum - 1) * limit;
-      const items = classified.slice(offset, offset + limit);
-      return { total, page: pageNum, pageSize: limit, items };
-    }
-
-    // 일반 경로: SQL 페이징
     const offset = (pageNum - 1) * limit;
     const [countRows] = await this.pool.execute<CountRow[]>(
       `SELECT COUNT(*) AS total

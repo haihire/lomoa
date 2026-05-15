@@ -97,6 +97,22 @@ function isTruthy(value?: string): boolean {
   return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
 }
 
+/**
+ * videoId 기준으로 중복 영상을 제거한다.
+ * YouTube search.list는 페이지 사이에 새 업로드가 발생하거나 결과 순서가
+ * 변경되면 동일한 videoId를 여러 페이지에서 반환할 수 있다.
+ */
+function dedupByVideoId(items: YoutubeVideoItem[]): YoutubeVideoItem[] {
+  const seen = new Set<string>();
+  const out: YoutubeVideoItem[] = [];
+  for (const item of items) {
+    if (seen.has(item.videoId)) continue;
+    seen.add(item.videoId);
+    out.push(item);
+  }
+  return out;
+}
+
 @Injectable()
 export class StreamersService implements OnModuleInit {
   private readonly logger = new Logger(StreamersService.name);
@@ -250,19 +266,20 @@ export class StreamersService implements OnModuleInit {
         if (!result.nextPageToken) break;
         pageToken = result.nextPageToken;
       }
-      allItems.sort(
+      const uniqueItems = dedupByVideoId(allItems);
+      uniqueItems.sort(
         (a, b) =>
           new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
       );
       await this.youtubeRedis.set(
         POPULAR_CACHE_KEY,
-        JSON.stringify({ items: allItems }),
+        JSON.stringify({ items: uniqueItems }),
         'EX',
         CACHE_TTL,
       );
-      this.logger.log(`YouTube 인기 영상 ${allItems.length}건 캐시 저장`);
+      this.logger.log(`YouTube 인기 영상 ${uniqueItems.length}건 캐시 저장`);
       // 조회수 스냅샷 저장
-      await this.snapshotViewCounts(allItems);
+      await this.snapshotViewCounts(uniqueItems);
     } catch (err: unknown) {
       const apiErr = toYoutubeApiError(err);
       const status = apiErr.response?.status;
@@ -493,11 +510,12 @@ export class StreamersService implements OnModuleInit {
         if (!result.nextPageToken) break;
         pageToken = result.nextPageToken;
       }
-      allItems.sort(
+      const uniqueItems = dedupByVideoId(allItems);
+      uniqueItems.sort(
         (a, b) =>
           new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
       );
-      popular = { items: allItems };
+      popular = { items: uniqueItems };
     } catch (err: unknown) {
       this.logger.error(`searchPopularVideos 실패: ${toErrorMessage(err)}`);
       await this.youtubeRedis.del(LOCK_POPULAR_KEY).catch(() => {});
@@ -527,24 +545,27 @@ export class StreamersService implements OnModuleInit {
     offset: number,
     limit: number,
   ): PopularResponse {
+    // 이미 캐시에 저장된 데이터가 중복을 포함할 수 있으므로 방어적으로 제거
+    const uniqueItems = dedupByVideoId(allItems);
+
     if (limit <= 0) {
       return {
-        items: allItems,
+        items: uniqueItems,
         nextOffset: null,
         hasMore: false,
-        total: allItems.length,
+        total: uniqueItems.length,
       };
     }
 
-    const items = allItems.slice(offset, offset + limit);
+    const items = uniqueItems.slice(offset, offset + limit);
     const consumed = offset + items.length;
-    const hasMore = consumed < allItems.length;
+    const hasMore = consumed < uniqueItems.length;
 
     return {
       items,
       nextOffset: hasMore ? consumed : null,
       hasMore,
-      total: allItems.length,
+      total: uniqueItems.length,
     };
   }
 

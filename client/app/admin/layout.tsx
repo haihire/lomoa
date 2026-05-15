@@ -22,6 +22,10 @@ export default function AdminLayout({
     router.push("/admin/login");
   }
 
+  if (pathname === "/admin/login") {
+    return <>{children}</>;
+  }
+
   return (
     <div className="h-screen bg-gray-950 text-gray-100 flex overflow-hidden">
       {/* Sidebar */}

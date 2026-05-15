@@ -1,10 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 export default function AdminLoginPage() {
-  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -24,8 +22,7 @@ export default function AdminLoginPage() {
         setError(data.message ?? "로그인 실패");
         return;
       }
-      router.push("/admin/sites");
-      router.refresh();
+      window.location.href = "/admin/sites";
     } catch {
       setError("네트워크 오류가 발생했습니다");
     } finally {

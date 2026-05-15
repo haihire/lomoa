@@ -40,39 +40,42 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-      <div className="w-full max-w-sm bg-gray-900 rounded-lg p-8 border border-gray-800">
-        <h1 className="text-xl font-semibold text-white mb-6">
-          다로아 관리자 로그인
-        </h1>
+    <div className="admin-shell min-h-screen flex items-center justify-center p-6">
+      <div className="admin-card w-full max-w-sm p-8">
+        <div className="mb-6">
+          <h1 className="admin-page-title">
+            다로아 <span className="text-blue-600">Admin</span>
+          </h1>
+          <p className="admin-page-subtitle mt-1">관리자 로그인</p>
+        </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-gray-400 mb-1">아이디</label>
+            <label className="admin-label">아이디</label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
               autoComplete="username"
-              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+              className="admin-input"
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-400 mb-1">비밀번호</label>
+            <label className="admin-label">비밀번호</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
-              className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+              className="admin-input"
             />
           </div>
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+          {error && <p className="text-red-500 text-sm">{error}</p>}
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded py-2 text-sm font-medium transition-colors"
+            className="admin-btn admin-btn-primary w-full"
           >
             {loading ? "로그인 중..." : "로그인"}
           </button>
@@ -80,7 +83,7 @@ export default function AdminLoginPage() {
             type="button"
             disabled={loading}
             onClick={handleGuestLogin}
-            className="w-full bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-300 rounded py-2 text-sm font-medium transition-colors"
+            className="admin-btn admin-btn-secondary w-full"
           >
             게스트로 둘러보기
           </button>

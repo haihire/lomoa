@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -35,7 +35,7 @@ function SiteCardPreview({ form }: { form: typeof EMPTY_FORM }) {
   })();
 
   return (
-    <div className="relative flex flex-col rounded-xl border border-slate-200 bg-slate-50 p-3 min-h-[80px]">
+    <div className="relative flex flex-col rounded-xl border border-[color:var(--admin-border)] bg-[color:var(--admin-surface-muted)] p-3 min-h-[80px]">
       <div className="flex items-start justify-between gap-2 pr-1">
         <div className="flex min-w-0 items-center gap-1.5">
           {iconSrc && (
@@ -48,25 +48,48 @@ function SiteCardPreview({ form }: { form: typeof EMPTY_FORM }) {
               className="shrink-0 rounded-sm"
             />
           )}
-          <span className="truncate font-semibold text-slate-900 text-sm">
-            {form.name || <span className="text-slate-400">이름</span>}
+          <span className="truncate font-semibold text-[color:var(--admin-text)] text-sm">
+            {form.name || (
+              <span className="text-[color:var(--admin-text-subtle)]">
+                이름
+              </span>
+            )}
           </span>
         </div>
-        <span className="shrink-0 rounded-full px-2 py-0.5 text-xs text-white bg-slate-900">
+        <span className="admin-badge admin-badge-neutral">
           {form.category || "카테고리"}
         </span>
       </div>
-      <p className="mt-1.5 text-xs text-slate-600 line-clamp-2">
-        {form.description || <span className="text-slate-400">설명</span>}
+      <p className="mt-1.5 text-xs text-[color:var(--admin-text-muted)] line-clamp-2">
+        {form.description || (
+          <span className="text-[color:var(--admin-text-subtle)]">설명</span>
+        )}
       </p>
     </div>
   );
+}
+
+function getCategoryTone(category: string | null) {
+  const value = (category ?? "").toLowerCase();
+
+  if (value.includes("공식") || value.includes("official")) {
+    return "border-sky-200 bg-sky-50 text-sky-700";
+  }
+  if (value.includes("커뮤니티") || value.includes("community")) {
+    return "border-violet-200 bg-violet-50 text-violet-700";
+  }
+  if (value.includes("도구") || value.includes("tool") || value.includes("계산")) {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  return "border-gray-200 bg-gray-100 text-gray-600";
 }
 
 export default function AdminSitesPage() {
   const [sites, setSites] = useState<Site[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [busyMessage, setBusyMessage] = useState<string | null>(null);
 
   // 추가/수정 폼
   const [showForm, setShowForm] = useState(false);
@@ -75,21 +98,37 @@ export default function AdminSitesPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const res = await fetch("/api/admin/sites", { cache: "no-store" });
-    if (!res.ok) {
+  const load = useCallback(
+    async (options?: { withSpinner?: boolean }): Promise<Site[] | null> => {
+      const withSpinner = options?.withSpinner ?? false;
+      if (withSpinner) {
+        setLoading(true);
+      }
+
+    try {
+      const res = await fetch("/api/admin/sites", { cache: "no-store" });
+      if (!res.ok) {
+        setError("목록 로드 실패");
+        return null;
+      }
+      const data = (await res.json()) as Site[];
+      setSites(data);
+      setError("");
+      return data;
+    } catch {
       setError("목록 로드 실패");
-      setLoading(false);
-      return;
+      return null;
+    } finally {
+      if (withSpinner) {
+        setLoading(false);
+      }
     }
-    setSites((await res.json()) as Site[]);
-    setLoading(false);
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
+    void load({ withSpinner: true });
   }, [load]);
 
   function startEdit(site: Site) {
@@ -120,6 +159,48 @@ export default function AdminSitesPage() {
     });
   }
 
+  function normalizeNullable(value: string | null | undefined) {
+    return value ?? null;
+  }
+
+  async function parseErrorMessage(res: Response, fallback: string) {
+    try {
+      const d = (await res.json()) as { message?: string };
+      return d.message ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  async function waitForReflection(
+    predicate: (items: Site[]) => boolean,
+    retries = 8,
+    delayMs = 350,
+  ) {
+    for (let i = 0; i < retries; i += 1) {
+      const items = await load();
+      if (items && predicate(items)) {
+        return true;
+      }
+      if (i < retries - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+    return false;
+  }
+
+  async function runWithBusyMessage(
+    message: string,
+    action: () => Promise<void>,
+  ) {
+    setBusyMessage(message);
+    try {
+      await action();
+    } finally {
+      setBusyMessage(null);
+    }
+  }
+
   async function handleSave() {
     if (!form.name || !form.href) {
       setFormError("이름과 URL은 필수입니다");
@@ -141,45 +222,123 @@ export default function AdminSitesPage() {
       : "/api/admin/sites";
     const method = editingId ? "PUT" : "POST";
 
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    await runWithBusyMessage(
+      editingId ? "수정 반영 확인 중입니다..." : "추가 반영 확인 중입니다...",
+      async () => {
+        const res = await fetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
 
-    if (!res.ok) {
-      const d = (await res.json()) as { message?: string };
-      setFormError(d.message ?? "저장 실패");
-      setSaving(false);
-      return;
-    }
+        if (!res.ok) {
+          setFormError(await parseErrorMessage(res, "저장 실패"));
+          return;
+        }
 
-    await purgeSitesCache();
-    cancelEdit();
-    await load();
+        const data = (await res.json()) as { seq?: number };
+        await purgeSitesCache();
+
+        const reflected = await waitForReflection((items) => {
+          if (editingId) {
+            const target = items.find((item) => item.seq === editingId);
+            if (!target) return false;
+            return (
+              target.name === payload.name &&
+              target.href === payload.href &&
+              normalizeNullable(target.category) ===
+                normalizeNullable(payload.category) &&
+              normalizeNullable(target.description) ===
+                normalizeNullable(payload.description) &&
+              normalizeNullable(target.icon) === normalizeNullable(payload.icon)
+            );
+          }
+
+          if (data.seq != null) {
+            const created = items.find((item) => item.seq === data.seq);
+            if (!created) return false;
+            return (
+              created.name === payload.name &&
+              created.href === payload.href &&
+              normalizeNullable(created.category) ===
+                normalizeNullable(payload.category) &&
+              normalizeNullable(created.description) ===
+                normalizeNullable(payload.description) &&
+              normalizeNullable(created.icon) === normalizeNullable(payload.icon)
+            );
+          }
+
+          return items.some(
+            (item) =>
+              item.name === payload.name &&
+              item.href === payload.href &&
+              normalizeNullable(item.category) ===
+                normalizeNullable(payload.category) &&
+              normalizeNullable(item.description) ===
+                normalizeNullable(payload.description) &&
+              normalizeNullable(item.icon) === normalizeNullable(payload.icon),
+          );
+        });
+
+        if (!reflected) {
+          setFormError(
+            "DB 반영 확인이 지연되고 있습니다. 잠시 후 다시 확인해주세요.",
+          );
+          return;
+        }
+
+        cancelEdit();
+      },
+    );
     setSaving(false);
   }
 
   async function handleToggleActive(site: Site) {
-    await fetch(`/api/admin/sites/${site.seq}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_active: site.is_active === 0 }),
+    const nextActive = site.is_active === 0;
+
+    await runWithBusyMessage("활성 상태 반영 확인 중입니다...", async () => {
+      const res = await fetch(`/api/admin/sites/${site.seq}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: nextActive }),
+      });
+
+      if (!res.ok) {
+        setError(await parseErrorMessage(res, "활성 상태 변경 실패"));
+        return;
+      }
+
+      await purgeSitesCache();
+      const reflected = await waitForReflection((items) => {
+        const target = items.find((item) => item.seq === site.seq);
+        return !!target && target.is_active === (nextActive ? 1 : 0);
+      });
+
+      if (!reflected) {
+        setError("활성 상태 반영 확인이 지연되고 있습니다.");
+      }
     });
-    await purgeSitesCache();
-    await load();
   }
 
   async function handleDelete(seq: number) {
     if (!confirm("정말 삭제하시겠습니까?")) return;
-    const res = await fetch(`/api/admin/sites/${seq}`, { method: "DELETE" });
-    if (!res.ok) {
-      const d = (await res.json()) as { message?: string };
-      alert(d.message ?? "삭제 실패");
-      return;
-    }
-    await purgeSitesCache();
-    await load();
+
+    await runWithBusyMessage("삭제 반영 확인 중입니다...", async () => {
+      const res = await fetch(`/api/admin/sites/${seq}`, { method: "DELETE" });
+      if (!res.ok) {
+        alert(await parseErrorMessage(res, "삭제 실패"));
+        return;
+      }
+
+      await purgeSitesCache();
+      const reflected = await waitForReflection(
+        (items) => !items.some((item) => item.seq === seq),
+      );
+
+      if (!reflected) {
+        setError("삭제 반영 확인이 지연되고 있습니다.");
+      }
+    });
   }
 
   const [purging, setPurging] = useState(false);
@@ -191,18 +350,29 @@ export default function AdminSitesPage() {
     alert("사이트 캐시가 무효화됐습니다.");
   }
 
+  const isProcessing = busyMessage !== null;
+  const totalSites = sites.length;
+  const activeSites = sites.filter((site) => site.is_active === 1).length;
+  const inactiveSites = totalSites - activeSites;
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold">사이트 관리</h1>
+      {/* 헤더 */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
+        <div>
+          <h1 className="admin-page-title">사이트 관리</h1>
+          <p className="admin-page-subtitle mt-1">
+            등록된 사이트 상태를 관리하고 즉시 반영 여부를 확인합니다.
+          </p>
+        </div>
         <div className="flex gap-2">
           <button
             onClick={handlePurge}
-            disabled={purging}
-            className="text-sm bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-gray-300 px-3 py-2 rounded transition-colors"
+            disabled={purging || isProcessing}
+            className="admin-btn admin-btn-secondary"
             title="Redis 사이트 캐시 즉시 삭제"
           >
-            {purging ? "처리 중..." : "새로고침"}
+            {purging ? "처리 중..." : "캐시 새로고침"}
           </button>
           <button
             onClick={() => {
@@ -211,29 +381,51 @@ export default function AdminSitesPage() {
               setForm(EMPTY_FORM);
               setFormError("");
             }}
-            className="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded transition-colors"
+            disabled={isProcessing}
+            className="admin-btn admin-btn-primary"
           >
             + 사이트 추가
           </button>
         </div>
       </div>
 
+      {/* 통계 카드 */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="admin-stat-card">
+          <p className="admin-stat-label">전체 사이트</p>
+          <p className="admin-stat-value mt-1">{totalSites}</p>
+        </div>
+        <div className="admin-stat-card">
+          <p className="admin-stat-label">활성</p>
+          <p className="admin-stat-value mt-1 text-emerald-600">
+            {activeSites}
+          </p>
+        </div>
+        <div className="admin-stat-card">
+          <p className="admin-stat-label">비활성</p>
+          <p className="admin-stat-value mt-1 text-gray-400">
+            {inactiveSites}
+          </p>
+        </div>
+      </div>
+
       {/* 모달 */}
       {showForm && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          className="admin-modal-overlay"
           onClick={(e) => {
-            if (e.target === e.currentTarget) cancelEdit();
+            if (!isProcessing && e.target === e.currentTarget) cancelEdit();
           }}
         >
-          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-2xl shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-white">
-                {editingId ? `사이트 수정 — #${editingId}` : "새 사이트 추가"}
+          <div className="admin-modal w-full max-w-2xl p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-base font-semibold text-[color:var(--admin-text)]">
+                {editingId ? `사이트 수정 · #${editingId}` : "새 사이트 추가"}
               </h2>
               <button
                 onClick={cancelEdit}
-                className="text-gray-500 hover:text-gray-300 text-lg leading-none"
+                disabled={isProcessing}
+                className="text-[color:var(--admin-text-subtle)] hover:text-[color:var(--admin-text)] text-lg leading-none"
               >
                 ✕
               </button>
@@ -249,34 +441,34 @@ export default function AdminSitesPage() {
                       key={field}
                       className={field === "description" ? "col-span-2" : ""}
                     >
-                      <label className="block text-xs text-gray-400 mb-1 capitalize">
-                        {field}
-                      </label>
+                      <label className="admin-label capitalize">{field}</label>
                       <input
                         type="text"
                         value={form[field]}
+                        disabled={isProcessing}
                         onChange={(e) =>
                           setForm((p) => ({ ...p, [field]: e.target.value }))
                         }
-                        className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500"
+                        className="admin-input"
                       />
                     </div>
                   ))}
                 </div>
                 {formError && (
-                  <p className="text-red-400 text-xs mt-2">{formError}</p>
+                  <p className="text-red-500 text-xs mt-2">{formError}</p>
                 )}
                 <div className="flex gap-2 mt-5">
                   <button
                     onClick={handleSave}
-                    disabled={saving}
-                    className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm px-4 py-1.5 rounded transition-colors"
+                    disabled={saving || isProcessing}
+                    className="admin-btn admin-btn-primary"
                   >
                     {saving ? "저장 중..." : "저장"}
                   </button>
                   <button
                     onClick={cancelEdit}
-                    className="text-gray-400 hover:text-gray-200 text-sm px-4 py-1.5 rounded transition-colors"
+                    disabled={isProcessing}
+                    className="admin-btn admin-btn-secondary"
                   >
                     취소
                   </button>
@@ -285,7 +477,9 @@ export default function AdminSitesPage() {
 
               {/* 카드 미리보기 */}
               <div className="w-52 shrink-0">
-                <p className="text-xs text-gray-500 mb-2">미리보기</p>
+                <p className="text-xs text-[color:var(--admin-text-muted)] mb-2 font-medium">
+                  미리보기
+                </p>
                 <SiteCardPreview form={form} />
               </div>
             </div>
@@ -293,77 +487,114 @@ export default function AdminSitesPage() {
         </div>
       )}
 
-      {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+      {error && (
+        <div className="admin-card mb-4 px-4 py-3 border-red-200 bg-red-50">
+          <p className="text-sm text-red-600">{error}</p>
+        </div>
+      )}
       {loading ? (
-        <p className="text-gray-500 text-sm">불러오는 중...</p>
+        <div className="admin-card admin-card-padded text-center">
+          <p className="text-sm text-[color:var(--admin-text-muted)]">
+            불러오는 중...
+          </p>
+        </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-800 text-gray-400 text-left">
-                <th className="py-2 pr-4 w-10">#</th>
-                <th className="py-2 pr-4">이름</th>
-                <th className="py-2 pr-4">URL</th>
-                <th className="py-2 pr-4">설명</th>
-                <th className="py-2 pr-4">카테고리</th>
-                <th className="py-2 pr-4">활성</th>
-                <th className="py-2">액션</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sites.map((site) => (
-                <tr
-                  key={site.seq}
-                  className="border-b border-gray-800/50 hover:bg-gray-900/40"
-                >
-                  <td className="py-2 pr-4 text-gray-500">{site.seq}</td>
-                  <td className="py-2 pr-4 text-white">{site.name}</td>
-                  <td className="py-2 pr-4">
-                    <a
-                      href={site.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-indigo-400 hover:underline truncate max-w-xs block"
-                    >
-                      {site.href}
-                    </a>
-                  </td>
-                  <td className="py-2 pr-4 text-gray-400">
-                    {site.description ?? "-"}
-                  </td>
-                  <td className="py-2 pr-4 text-gray-400">
-                    {site.category ?? "-"}
-                  </td>
-                  <td className="py-2 pr-4">
-                    <button
-                      onClick={() => handleToggleActive(site)}
-                      className={`text-xs px-2 py-0.5 rounded ${
-                        site.is_active
-                          ? "bg-green-900/50 text-green-400"
-                          : "bg-gray-800 text-gray-500"
-                      }`}
-                    >
-                      {site.is_active ? "활성" : "비활성"}
-                    </button>
-                  </td>
-                  <td className="py-2 flex gap-2">
-                    <button
-                      onClick={() => startEdit(site)}
-                      className="text-xs text-indigo-400 hover:text-indigo-300"
-                    >
-                      수정
-                    </button>
-                    <button
-                      onClick={() => handleDelete(site.seq)}
-                      className="text-xs text-red-400 hover:text-red-300"
-                    >
-                      삭제
-                    </button>
-                  </td>
+        <div className="admin-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th className="w-12 text-center">#</th>
+                  <th>이름</th>
+                  <th>URL</th>
+                  <th>설명</th>
+                  <th>카테고리</th>
+                  <th className="text-center">활성</th>
+                  <th className="text-center">액션</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {sites.map((site) => (
+                  <tr key={site.seq}>
+                    <td className="text-center text-[color:var(--admin-text-subtle)] tabular-nums">
+                      {site.seq}
+                    </td>
+                    <td className="font-medium">{site.name}</td>
+                    <td>
+                      <a
+                        href={site.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block max-w-xs truncate text-blue-600 hover:text-blue-700 hover:underline"
+                      >
+                        {site.href}
+                      </a>
+                    </td>
+                    <td className="text-[color:var(--admin-text-muted)] max-w-xs truncate">
+                      {site.description ?? "-"}
+                    </td>
+                    <td>
+                      {site.category ? (
+                        <span
+                          className={`admin-badge ${getCategoryTone(site.category)}`}
+                        >
+                          {site.category}
+                        </span>
+                      ) : (
+                        <span className="text-[color:var(--admin-text-subtle)]">
+                          -
+                        </span>
+                      )}
+                    </td>
+                    <td className="text-center">
+                      <button
+                        onClick={() => handleToggleActive(site)}
+                        disabled={isProcessing}
+                        className={`admin-badge ${
+                          site.is_active
+                            ? "admin-badge-success cursor-pointer"
+                            : "admin-badge-neutral cursor-pointer"
+                        }`}
+                      >
+                        {site.is_active ? "활성" : "비활성"}
+                      </button>
+                    </td>
+                    <td>
+                      <div className="flex justify-center gap-2">
+                        <button
+                          onClick={() => startEdit(site)}
+                          disabled={isProcessing}
+                          className="admin-btn admin-btn-sm admin-btn-secondary"
+                        >
+                          수정
+                        </button>
+                        <button
+                          onClick={() => handleDelete(site.seq)}
+                          disabled={isProcessing}
+                          className="admin-btn admin-btn-sm admin-btn-danger"
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {isProcessing && (
+        <div className="admin-modal-overlay">
+          <div className="admin-modal px-6 py-5 text-center">
+            <p className="text-sm font-semibold text-[color:var(--admin-text)]">
+              처리중입니다...
+            </p>
+            <p className="mt-1 text-xs text-[color:var(--admin-text-muted)]">
+              {busyMessage}
+            </p>
+          </div>
         </div>
       )}
     </div>

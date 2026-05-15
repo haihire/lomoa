@@ -22,7 +22,7 @@ export default function AdminLoginPage() {
         setError(data.message ?? "로그인 실패");
         return;
       }
-      window.location.href = "/admin/sites";
+      window.location.replace("/admin/sites");
     } catch {
       setError("네트워크 오류가 발생했습니다");
     } finally {

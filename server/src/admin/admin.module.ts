@@ -4,6 +4,7 @@ import { AdminAuthController } from './admin-auth.controller';
 import { AdminSitesController } from './admin-sites.controller';
 import { AdminCacheController } from './admin-cache.controller';
 import { AdminCharactersController } from './admin-characters.controller';
+import { AdminSyncController } from './admin-sync.controller';
 import { AdminGuard, AdminWriteGuard } from './admin.guard';
 import { StreamersModule } from '../streamers/streamers.module';
 import { SitesModule } from '../sites/sites.module';
@@ -15,6 +16,7 @@ import { SitesModule } from '../sites/sites.module';
     AdminSitesController,
     AdminCacheController,
     AdminCharactersController,
+    AdminSyncController,
   ],
   providers: [AdminAuthService, AdminGuard, AdminWriteGuard],
   exports: [AdminAuthService],

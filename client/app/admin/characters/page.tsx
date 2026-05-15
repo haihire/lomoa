@@ -110,7 +110,8 @@ export default function AdminCharactersPage() {
         <div>
           <h1 className="admin-page-title">캐릭터 목록</h1>
           <p className="admin-page-subtitle mt-1">
-            총 {result?.total.toLocaleString() ?? "-"}명의 캐릭터가 등록되어 있습니다.
+            총 {result?.total.toLocaleString() ?? "-"}명의 캐릭터가 등록되어
+            있습니다.
           </p>
         </div>
         <button
@@ -171,9 +172,7 @@ export default function AdminCharactersPage() {
         </div>
       </div>
 
-      {error && (
-        <p className="text-red-500 text-sm mb-3 shrink-0">{error}</p>
-      )}
+      {error && <p className="text-red-500 text-sm mb-3 shrink-0">{error}</p>}
 
       {loading ? (
         <div className="admin-card admin-card-padded text-center">

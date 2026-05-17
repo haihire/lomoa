@@ -66,6 +66,11 @@ function SyncCard({
   desc: string;
 }) {
   const [state, setState] = useState<SyncState>(INITIAL);
+  const [showForm, setShowForm] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [loading, setLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const running =
@@ -73,22 +78,30 @@ function SyncCard({
     state.phase !== "done" &&
     state.phase !== "error";
 
-  async function start() {
+  function requestCredentials() {
     const ok = window.confirm(
       `[${label}]\n\n프로덕션의 해당 테이블을 전체 삭제 후 로컬 데이터로 재삽입합니다.\n계속하시겠습니까?`,
     );
     if (!ok) return;
 
+    setAuthError("");
+    setShowForm(true);
+  }
+
+  async function start(sessionId: string) {
     setState({ ...INITIAL, phase: "login", message: "시작 중..." });
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
     try {
-      const res = await fetch(`/api/admin/sync/${table}`, {
-        method: "GET",
-        signal: ctrl.signal,
-        headers: { accept: "text/event-stream" },
-      });
+      const res = await fetch(
+        `/api/admin/sync/${table}?sessionId=${encodeURIComponent(sessionId)}`,
+        {
+          method: "GET",
+          signal: ctrl.signal,
+          headers: { accept: "text/event-stream" },
+        },
+      );
       if (!res.ok || !res.body) {
         const txt = await res.text().catch(() => "");
         throw new Error(`연결 실패 (${res.status}): ${txt}`);
@@ -125,6 +138,46 @@ function SyncCard({
   function cancel() {
     abortRef.current?.abort();
     setState((s) => ({ ...s, phase: "error", error: "사용자가 취소함" }));
+  }
+
+  async function syncCheck(u: string, p: string) {
+    setLoading(true);
+    setAuthError("");
+    try {
+      const res = await fetch("/api/admin/sync/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: u, password: p }),
+      });
+
+      const data = (await res.json()) as {
+        sessionId?: string;
+        role?: string;
+        message?: string;
+      };
+      if (!res.ok) {
+        setAuthError(data.message ?? "로그인 실패");
+        return;
+      }
+      if (!data.sessionId) {
+        setAuthError("인증 세션 정보가 없습니다.");
+        return;
+      }
+
+      setShowForm(false);
+      await start(data.sessionId);
+    } catch (err) {
+      setAuthError(
+        err instanceof Error ? err.message : "원격 관리자 인증 중 오류가 발생했습니다.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await syncCheck(username, password);
   }
 
   return (
@@ -182,7 +235,7 @@ function SyncCard({
       <div className="mt-4 flex gap-2">
         <button
           type="button"
-          onClick={start}
+          onClick={requestCredentials}
           disabled={running}
           className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-700"
         >
@@ -198,6 +251,55 @@ function SyncCard({
           </button>
         )}
       </div>
+
+      {showForm && (
+        <div className="admin-modal-overlay">
+          <div className="admin-modal w-full max-w-md p-6">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="admin-label">아이디</label>
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  required
+                  autoComplete="username"
+                  className="admin-input"
+                />
+              </div>
+              <div>
+                <label className="admin-label">비밀번호</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  className="admin-input"
+                />
+              </div>
+              {authError && <p className="text-sm text-red-500">{authError}</p>}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowForm(false)}
+                  className="admin-btn admin-btn-secondary flex-1"
+                  disabled={loading}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="admin-btn admin-btn-primary flex-1"
+                >
+                  {loading ? "확인 중..." : "인증 후 동기화"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

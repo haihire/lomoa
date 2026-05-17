@@ -68,6 +68,7 @@ const TABLE_SPECS: Record<TableKey, TableSpec> = {
 // Keep each JSON payload below the default Nest/Express body limit.
 const SYNC_CHUNK_SIZE = 100;
 const SYNC_MAX_PAYLOAD_BYTES = 75 * 1024;
+const SYNC_CHUNK_DELAY_MS = 50;
 
 function specOrThrow(table: string): TableSpec {
   if (!(table in TABLE_SPECS)) {
@@ -260,6 +261,8 @@ export class AdminSyncController {
                 ),
                 lastSeq,
               });
+
+              await sleep(SYNC_CHUNK_DELAY_MS);
             }
 
             if (cancelled) break;
@@ -332,6 +335,10 @@ function splitRowsByPayloadSize(rows: unknown[][]): unknown[][][] {
 
 function payloadSize(body: unknown): number {
   return Buffer.byteLength(JSON.stringify(body), 'utf8');
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function callTargetRaw(

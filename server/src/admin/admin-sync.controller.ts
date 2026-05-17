@@ -198,6 +198,8 @@ export class AdminSyncController {
   }
 
   @Sse(':table/run')
+  @UseGuards(AdminWriteGuard)
+  @RequireOwner()
   run(
     @Param('table') table: string,
     @Query('sessionId') sessionId?: string,

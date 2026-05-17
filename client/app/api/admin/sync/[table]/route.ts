@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { cookies } from "next/headers";
 const NEST_API = process.env.NEST_API_URL ?? "http://localhost:3001";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,8 @@ export async function GET(
   const { table } = await params;
   const sessionId = req.nextUrl.searchParams.get("sessionId")?.trim() ?? "";
   const direction = req.nextUrl.searchParams.get("direction")?.trim() ?? "";
+  const store = await cookies();
+  const localSession = store.get("admin_token")?.value ?? "";
 
   if (!sessionId) {
     return new Response("missing remote session", { status: 401 });
@@ -29,6 +32,7 @@ export async function GET(
     method: "GET",
     headers: {
       accept: "text/event-stream",
+      ...(localSession ? { "x-admin-session": localSession } : {}),
     },
     signal: req.signal,
   });

@@ -9,6 +9,8 @@ import {
   BadRequestException,
   Inject,
   MessageEvent,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import type { Pool } from 'mysql2/promise';
 import type { RowDataPacket, ResultSetHeader } from 'mysql2';
@@ -16,6 +18,7 @@ import { Observable } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
 import { DB_POOL } from '../db/db.module';
 import { AdminWriteGuard, RequireOwner } from './admin.guard';
+import { AdminAuthService } from './admin-auth.service';
 
 type TableKey = 'users' | 'sites';
 
@@ -76,6 +79,7 @@ export class AdminSyncController {
   constructor(
     @Inject(DB_POOL) private readonly pool: Pool,
     private readonly config: ConfigService,
+    private readonly authService: AdminAuthService,
   ) {}
 
   /** target 측: 동기화 시작 - TRUNCATE */
@@ -129,6 +133,17 @@ export class AdminSyncController {
     } finally {
       conn.release();
     }
+  }
+
+  @Post('check')
+  @HttpCode(HttpStatus.OK)
+  async sync_login_check(
+    @Body() body: { username?: string; password?: string },
+  ) {
+    if (!body.username || !body.password) {
+      throw new BadRequestException('username과 password는 필수입니다');
+    }
+    return this.authService.login(body.username, body.password);
   }
 
   /** source/orchestrator 측: 로컬 DB → 원격 target API로 SSE 진행률 스트림 */

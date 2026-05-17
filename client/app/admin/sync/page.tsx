@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { buildGuestNotice, useAdminRole } from "@/lib/admin-role";
 
 type Phase = "idle" | "login" | "begin" | "count" | "chunk" | "done" | "error";
 type SyncDirection = "local-to-prod" | "prod-to-local";
@@ -46,8 +47,11 @@ export default function SyncPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [direction, setDirection] = useState<SyncDirection>("local-to-prod");
+  const [accessNotice, setAccessNotice] = useState("");
   const [state, setState] = useState<SyncState>(INITIAL);
   const abortRef = useRef<AbortController | null>(null);
+  const role = useAdminRole();
+  const isGuest = role === "guest";
 
   useEffect(() => {
     const host = window.location.hostname;
@@ -62,7 +66,14 @@ export default function SyncPage() {
   const directionLabel =
     direction === "local-to-prod" ? "Local → Prod" : "Prod → Local";
 
+  function requireMaster(action: string) {
+    if (!isGuest) return true;
+    setAccessNotice(buildGuestNotice(action));
+    return false;
+  }
+
   const handleSyncClick = (tableKey: "users" | "sites") => {
+    if (!requireMaster("DB 동기화")) return;
     const table = TABLES.find((item) => item.key === tableKey);
     const actionText =
       direction === "local-to-prod"
@@ -186,6 +197,11 @@ export default function SyncPage() {
             동기화 방향을 선택한 뒤 실행합니다. 대상 측 테이블은{" "}
             <strong className="text-red-400">TRUNCATE</strong> 후 전체 재삽입됩니다.
           </p>
+          {accessNotice && (
+            <pre className="mt-3 whitespace-pre-wrap rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {accessNotice}
+            </pre>
+          )}
         </header>
 
         <div className="flex gap-2 text-sm">

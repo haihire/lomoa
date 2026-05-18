@@ -119,10 +119,19 @@ export interface AdminMonitoringDashboard {
       total_mem_mb: number;
     } | null;
   };
-  requestSeries: Array<{ minute: string; avgDurationMs: number; count: number }>;
+  requestSeries: Array<{
+    minute: string;
+    avgDurationMs: number;
+    count: number;
+  }>;
   siteClickSeries: Array<{ minute: string; count: number }>;
   youtubeClickSeries: Array<{ minute: string; count: number }>;
-  sectionSeries: Array<{ minute: string; label: string; avgDurationMs: number; count: number }>;
+  sectionSeries: Array<{
+    minute: string;
+    label: string;
+    avgDurationMs: number;
+    count: number;
+  }>;
   pageVisits: VisitRow[];
   countryVisits: Array<{ countryCode: string; count: number }>;
   osVisits: Array<{ osName: string; count: number }>;
@@ -180,9 +189,24 @@ export class AdminMonitoringService implements OnModuleInit {
     method: 'GET';
     cacheType: 'redis' | 'no-cache';
   }> = [
-    { apiKey: 'sites', path: '/api/sites', method: 'GET', cacheType: 'no-cache' },
-    { apiKey: 'stat-builds', path: '/api/characters/stat-builds', method: 'GET', cacheType: 'redis' },
-    { apiKey: 'youtube', path: '/api/streamers/popular?offset=0&limit=8', method: 'GET', cacheType: 'redis' },
+    {
+      apiKey: 'sites',
+      path: '/api/sites',
+      method: 'GET',
+      cacheType: 'no-cache',
+    },
+    {
+      apiKey: 'stat-builds',
+      path: '/api/characters/stat-builds',
+      method: 'GET',
+      cacheType: 'redis',
+    },
+    {
+      apiKey: 'youtube',
+      path: '/api/streamers/popular?offset=0&limit=8',
+      method: 'GET',
+      cacheType: 'redis',
+    },
   ];
   private lastCpuUsage = process.cpuUsage();
   private lastSampleAt = Date.now();
@@ -238,7 +262,15 @@ export class AdminMonitoringService implements OnModuleInit {
           os_name = VALUES(os_name),
           browser_name = VALUES(browser_name),
           last_seen_at = NOW()`,
-      [input.path, input.deviceType, input.userAgent, input.referrer, input.countryCode, input.osName, input.browserName],
+      [
+        input.path,
+        input.deviceType,
+        input.userAgent,
+        input.referrer,
+        input.countryCode,
+        input.osName,
+        input.browserName,
+      ],
     );
   }
 
@@ -307,18 +339,36 @@ export class AdminMonitoringService implements OnModuleInit {
     const now = Date.now();
     const elapsedMs = Math.max(1, now - this.lastSampleAt);
     const cpuNow = process.cpuUsage();
-    const cpuDeltaUs = cpuNow.user - this.lastCpuUsage.user + (cpuNow.system - this.lastCpuUsage.system);
+    const cpuDeltaUs =
+      cpuNow.user -
+      this.lastCpuUsage.user +
+      (cpuNow.system - this.lastCpuUsage.system);
     // Use process CPU utilization over elapsed wall time.
     // This is more intuitive for app monitoring than dividing by host core count.
-    const cpuPercent = Math.min(100, Math.max(0, (cpuDeltaUs / 1000 / elapsedMs) * 100));
+    const cpuPercent = Math.min(
+      100,
+      Math.max(0, (cpuDeltaUs / 1000 / elapsedMs) * 100),
+    );
     const mem = process.memoryUsage();
     const totalMemMb = Math.round(os.totalmem() / 1024 / 1024);
     const rssMb = Math.round(mem.rss / 1024 / 1024);
     const heapUsedMb = Math.round(mem.heapUsed / 1024 / 1024);
     const heapTotalMb = Math.round(mem.heapTotal / 1024 / 1024);
-    const memoryPercent = totalMemMb ? Math.min(100, Math.max(0, (rssMb / totalMemMb) * 100)) : 0;
+    const memoryPercent = totalMemMb
+      ? Math.min(100, Math.max(0, (rssMb / totalMemMb) * 100))
+      : 0;
     const loadAvg1m = os.loadavg()[0] ?? 0;
-    return { now, cpuNow, cpuPercent, memoryPercent, rssMb, heapUsedMb, heapTotalMb, totalMemMb, loadAvg1m };
+    return {
+      now,
+      cpuNow,
+      cpuPercent,
+      memoryPercent,
+      rssMb,
+      heapUsedMb,
+      heapTotalMb,
+      totalMemMb,
+      loadAvg1m,
+    };
   }
 
   @Cron('*/5 * * * * *')
@@ -330,32 +380,55 @@ export class AdminMonitoringService implements OnModuleInit {
 
   @Cron('0 */10 * * * *')
   async probeApis() {
-    const base = process.env.MONITORING_PROBE_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3001}`;
+    const base =
+      process.env.MONITORING_PROBE_BASE_URL ??
+      `http://127.0.0.1:${process.env.PORT ?? 3001}`;
     for (const target of this.probeTargets) {
       const started = process.hrtime.bigint();
       let statusCode = 0;
       let success = false;
       try {
-        const res = await fetch(`${base}${target.path}`, { method: target.method, cache: 'no-store' });
+        const res = await fetch(`${base}${target.path}`, {
+          method: target.method,
+          cache: 'no-store',
+        });
         statusCode = res.status;
         success = res.ok;
       } catch {
         statusCode = 0;
         success = false;
       }
-      const durationMs = Math.max(0, Math.round(Number(process.hrtime.bigint() - started) / 1_000_000));
+      const durationMs = Math.max(
+        0,
+        Math.round(Number(process.hrtime.bigint() - started) / 1_000_000),
+      );
       await this.pool.execute(
         `INSERT INTO monitoring_api_probes
           (api_key, path, method, cache_type, status_code, duration_ms, is_success, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-        [target.apiKey, target.path, target.method, target.cacheType, statusCode, durationMs, success ? 1 : 0],
+        [
+          target.apiKey,
+          target.path,
+          target.method,
+          target.cacheType,
+          statusCode,
+          durationMs,
+          success ? 1 : 0,
+        ],
       );
     }
   }
 
   async getDashboard(rangeDays = 7): Promise<AdminMonitoringDashboard> {
     const safeRangeDays = Math.max(1, Math.min(30, Math.trunc(rangeDays)));
-    const bucketHours = safeRangeDays === 1 ? 1 : safeRangeDays === 3 ? 3 : safeRangeDays === 7 ? 7 : 30;
+    const bucketHours =
+      safeRangeDays === 1
+        ? 1
+        : safeRangeDays === 3
+          ? 3
+          : safeRangeDays === 7
+            ? 7
+            : 30;
     const [summaryRows] = await this.pool.execute<SummaryRow[]>(
       `
       SELECT
@@ -375,7 +448,9 @@ export class AdminMonitoringService implements OnModuleInit {
     );
     const summary = summaryRows[0];
 
-    const [durationRows] = await this.pool.execute<Array<RowDataPacket & { duration_ms: number }>>(
+    const [durationRows] = await this.pool.execute<
+      Array<RowDataPacket & { duration_ms: number }>
+    >(
       `
       SELECT duration_ms
       FROM apm_request_timings
@@ -400,7 +475,9 @@ export class AdminMonitoringService implements OnModuleInit {
       `,
     );
 
-    const [siteClickSeriesRows] = await this.pool.execute<Array<RowDataPacket & { bucket: string; count: number }>>(
+    const [siteClickSeriesRows] = await this.pool.execute<
+      Array<RowDataPacket & { bucket: string; count: number }>
+    >(
       `
       SELECT DATE_FORMAT(created_at, '%m-%d') AS bucket,
              COUNT(*) AS count
@@ -411,7 +488,9 @@ export class AdminMonitoringService implements OnModuleInit {
       `,
     );
 
-    const [youtubeClickSeriesRows] = await this.pool.execute<Array<RowDataPacket & { bucket: string; count: number }>>(
+    const [youtubeClickSeriesRows] = await this.pool.execute<
+      Array<RowDataPacket & { bucket: string; count: number }>
+    >(
       `
       SELECT DATE_FORMAT(created_at, '%m-%d') AS bucket,
              COUNT(*) AS count
@@ -570,7 +649,10 @@ export class AdminMonitoringService implements OnModuleInit {
         windowMinutes: 60,
         totalRequests: summary?.total_requests ?? 0,
         errorCount: summary?.error_count ?? 0,
-        errorRate: summary && summary.total_requests ? Number((summary.error_count / summary.total_requests).toFixed(3)) : 0,
+        errorRate:
+          summary && summary.total_requests
+            ? Number((summary.error_count / summary.total_requests).toFixed(3))
+            : 0,
         slowCount: summary?.slow_count ?? 0,
         slowThresholdMs: this.SLOW_THRESHOLD_MS,
         avgDurationMs: summary?.avg_duration_ms ?? 0,
@@ -585,14 +667,38 @@ export class AdminMonitoringService implements OnModuleInit {
         },
         latestSystem,
       },
-      requestSeries: requestSeries.map((row) => ({ minute: row.bucket, avgDurationMs: row.avg_duration_ms, count: row.count })),
-      siteClickSeries: siteClickSeriesRows.map((row) => ({ minute: row.bucket, count: row.count })),
-      youtubeClickSeries: youtubeClickSeriesRows.map((row) => ({ minute: row.bucket, count: row.count })),
-      sectionSeries: sectionSeries.map((row) => ({ minute: row.bucket, label: row.label, avgDurationMs: row.avg_duration_ms, count: row.count })),
+      requestSeries: requestSeries.map((row) => ({
+        minute: row.bucket,
+        avgDurationMs: row.avg_duration_ms,
+        count: row.count,
+      })),
+      siteClickSeries: siteClickSeriesRows.map((row) => ({
+        minute: row.bucket,
+        count: row.count,
+      })),
+      youtubeClickSeries: youtubeClickSeriesRows.map((row) => ({
+        minute: row.bucket,
+        count: row.count,
+      })),
+      sectionSeries: sectionSeries.map((row) => ({
+        minute: row.bucket,
+        label: row.label,
+        avgDurationMs: row.avg_duration_ms,
+        count: row.count,
+      })),
       pageVisits: visitRows,
-      countryVisits: countryRows.map((row) => ({ countryCode: row.name || 'UNKNOWN', count: row.count })),
-      osVisits: osRows.map((row) => ({ osName: row.name || 'Unknown', count: row.count })),
-      browserVisits: browserRows.map((row) => ({ browserName: row.name || 'Unknown', count: row.count })),
+      countryVisits: countryRows.map((row) => ({
+        countryCode: row.name || 'UNKNOWN',
+        count: row.count,
+      })),
+      osVisits: osRows.map((row) => ({
+        osName: row.name || 'Unknown',
+        count: row.count,
+      })),
+      browserVisits: browserRows.map((row) => ({
+        browserName: row.name || 'Unknown',
+        count: row.count,
+      })),
       systemSeries: systemRows.map((row) => ({
         at: toIsoString(row.created_at),
         cpuPercent: row.cpu_percent,
@@ -601,10 +707,14 @@ export class AdminMonitoringService implements OnModuleInit {
         heapUsedMb: row.heap_used_mb,
         totalMemMb: row.total_mem_mb,
       })),
-      slowRequests: slowRows.map((row) => ({ ...row, created_at: toIsoString(row.created_at) })),
+      slowRequests: slowRows.map((row) => ({
+        ...row,
+        created_at: toIsoString(row.created_at),
+      })),
       apiStats: apiRows.map((row) => {
         const avg = row.avg_duration_ms ?? 0;
-        const level: 'low' | 'near' | 'high' = avg >= 800 ? 'high' : avg >= 300 ? 'near' : 'low';
+        const level: 'low' | 'near' | 'high' =
+          avg >= 800 ? 'high' : avg >= 300 ? 'near' : 'low';
         return {
           path: row.path,
           method: row.method,
@@ -637,7 +747,10 @@ export class AdminMonitoringService implements OnModuleInit {
 
   private percentileFromSorted(values: number[], p: number): number {
     if (values.length === 0) return 0;
-    const index = Math.min(values.length - 1, Math.max(0, Math.ceil(values.length * p) - 1));
+    const index = Math.min(
+      values.length - 1,
+      Math.max(0, Math.ceil(values.length * p) - 1),
+    );
     return values[index] ?? 0;
   }
 
@@ -667,12 +780,16 @@ export class AdminMonitoringService implements OnModuleInit {
       ADD COLUMN IF NOT EXISTS browser_name VARCHAR(64) NOT NULL DEFAULT 'Unknown'
     `);
     try {
-      await this.pool.execute(`ALTER TABLE apm_page_visits DROP INDEX uk_page_device`);
+      await this.pool.execute(
+        `ALTER TABLE apm_page_visits DROP INDEX uk_page_device`,
+      );
     } catch {
       // old index may not exist
     }
     try {
-      await this.pool.execute(`ALTER TABLE apm_page_visits DROP INDEX uk_page_device_country_os`);
+      await this.pool.execute(
+        `ALTER TABLE apm_page_visits DROP INDEX uk_page_device_country_os`,
+      );
     } catch {
       // transitional index may not exist
     }

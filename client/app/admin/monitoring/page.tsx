@@ -62,6 +62,7 @@ const EMPTY_DASHBOARD: Dashboard = {
 };
 
 const RANGE_OPTIONS = [1, 3, 7, 30] as const;
+const LIVE_WINDOW_MS = 60 * 60 * 1000;
 
 function toFixedHundred<T extends { count: number }>(
   items: T[],
@@ -98,7 +99,6 @@ export default function MonitoringPage() {
   const [activeChart, setActiveChart] = useState<string | null>(null);
   const hasLoadedRef = useRef(false);
   const prevVisitCountRef = useRef(0);
-  const LIVE_WINDOW_MS = 60 * 60 * 1000;
 
   useEffect(() => {
     let alive = true;

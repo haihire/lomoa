@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { json, urlencoded } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/http-exception.filter';
 import { FileLoggerService } from './common/file-logger.service';
@@ -35,7 +36,7 @@ async function bootstrap() {
   app.useGlobalFilters(new AllExceptionsFilter(kakaoService));
 
   const monitoring = app.get(AdminMonitoringService);
-  app.use((req, res, next) => {
+  app.use((req: Request, res: Response, next: NextFunction) => {
     const started = process.hrtime.bigint();
     res.on('finish', () => {
       const ended = process.hrtime.bigint();

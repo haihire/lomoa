@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AdminLoadingState } from "@/app/admin/_components/AdminLoadingState";
 import { buildGuestNotice, useAdminRole } from "@/lib/admin-role";
 
 type Phase = "idle" | "login" | "begin" | "count" | "chunk" | "done" | "error";
@@ -208,11 +207,11 @@ export default function SyncPage() {
         </header>
 
         {loading && (
-          <AdminLoadingState
-            compact
-            title="DB 동기화 상태를 확인하는 중입니다"
-            description="대상 서버와 테이블 상태를 확인하고 있어요."
-          />
+          <div className="admin-loading-box admin-loading-box-compact">
+            <p className="text-sm text-[color:var(--admin-text-muted)]">
+              DB 동기화 상태를 확인하는 중입니다...
+            </p>
+          </div>
         )}
 
         <div className="flex gap-2 text-sm">

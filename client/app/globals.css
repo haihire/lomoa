@@ -214,7 +214,7 @@ body {
   color: var(--admin-text);
   letter-spacing: -0.02em;
 }
-.admin-loading-state {
+.admin-loading-box {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -228,12 +228,13 @@ body {
   border: 1px dashed var(--admin-border-strong);
   border-radius: var(--admin-radius);
 }
-.admin-loading-state.is-compact {
+.admin-loading-box-compact {
   min-height: 72px;
   padding: 1rem;
   justify-content: flex-start;
 }
-.admin-loading-spinner {
+.admin-loading-box::before {
+  content: "";
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
@@ -241,18 +242,6 @@ body {
   border-top-color: var(--admin-primary);
   border-radius: 999px;
   animation: admin-loading-spin 0.8s linear infinite;
-}
-.admin-loading-title {
-  display: block;
-  font-size: 0.875rem;
-  font-weight: 700;
-  color: var(--admin-text);
-}
-.admin-loading-description {
-  display: block;
-  margin-top: 0.125rem;
-  font-size: 0.75rem;
-  color: var(--admin-text-muted);
 }
 @keyframes admin-loading-spin {
   to {

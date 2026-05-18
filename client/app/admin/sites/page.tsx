@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AdminLoadingState } from "@/app/admin/_components/AdminLoadingState";
 import { buildGuestNotice, useAdminRole } from "@/lib/admin-role";
 
 interface Site {
@@ -518,17 +517,11 @@ export default function AdminSitesPage() {
         </div>
       )}
       {loading ? (
-        <>
-          <AdminLoadingState
-            title="사이트 목록을 불러오는 중입니다"
-            description="등록된 사이트 모음 데이터를 가져오고 있어요."
-          />
-          <div className="hidden admin-card admin-card-padded text-center">
+        <div className="admin-loading-box">
           <p className="text-sm text-[color:var(--admin-text-muted)]">
-            불러오는 중...
+            사이트 목록을 불러오는 중입니다...
           </p>
-          </div>
-        </>
+        </div>
       ) : (
         <div className="admin-card overflow-hidden">
           <div className="overflow-x-auto">

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AdminLoadingState } from "@/app/admin/_components/AdminLoadingState";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 type Dashboard = {
@@ -267,12 +266,11 @@ export default function MonitoringPage() {
       </div>
 
       {loading && (
-        <AdminLoadingState
-          compact
-          className="mb-4 shrink-0"
-          title="모니터링 지표를 불러오는 중입니다"
-          description="서버 상태와 방문 통계를 최신 데이터로 가져오고 있어요."
-        />
+        <div className="admin-loading-box admin-loading-box-compact mb-4 shrink-0">
+          <p className="text-sm text-[color:var(--admin-text-muted)]">
+            모니터링 지표를 불러오는 중입니다...
+          </p>
+        </div>
       )}
 
       <div className="mb-4 grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">

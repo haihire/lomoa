@@ -18,6 +18,7 @@ export default function AdminCachePage() {
   const [accessNotice, setAccessNotice] = useState("");
   const role = useAdminRole();
   const isGuest = role === "guest";
+  const isWorking = allLoading || Object.values(status).includes("loading");
 
   function requireMaster(action: string) {
     if (!isGuest) return true;
@@ -71,6 +72,14 @@ export default function AdminCachePage() {
           </pre>
         )}
       </div>
+
+      {isWorking && (
+        <div className="admin-loading-box admin-loading-box-compact mb-4">
+          <p className="text-sm text-[color:var(--admin-text-muted)]">
+            캐시 작업을 처리하는 중입니다...
+          </p>
+        </div>
+      )}
 
       <div className="admin-card admin-card-padded space-y-3 mb-6">
         {CACHE_KEYS.map(({ key, label, desc }) => (

@@ -265,6 +265,14 @@ export default function MonitoringPage() {
         <p className="admin-page-subtitle mt-1">운영 상태와 추세를 빠르게 확인합니다.</p>
       </div>
 
+      {loading && (
+        <div className="admin-loading-box admin-loading-box-compact mb-4 shrink-0">
+          <p className="text-sm text-[color:var(--admin-text-muted)]">
+            모니터링 지표를 불러오는 중입니다...
+          </p>
+        </div>
+      )}
+
       <div className="mb-4 grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="admin-stat-card">
           <p className="admin-stat-label">평균 응답</p>

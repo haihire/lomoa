@@ -206,14 +206,6 @@ export default function SyncPage() {
           )}
         </header>
 
-        {loading && (
-          <div className="admin-loading-box admin-loading-box-compact">
-            <p className="text-sm text-[color:var(--admin-text-muted)]">
-              DB 동기화 상태를 확인하는 중입니다...
-            </p>
-          </div>
-        )}
-
         <div className="flex gap-2 text-sm">
           <button
             type="button"

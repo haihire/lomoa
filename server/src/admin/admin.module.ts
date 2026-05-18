@@ -21,7 +21,12 @@ import { AdminMonitoringService } from './admin-monitoring.service';
     AdminSyncController,
     AdminMonitoringController,
   ],
-  providers: [AdminAuthService, AdminGuard, AdminWriteGuard, AdminMonitoringService],
+  providers: [
+    AdminAuthService,
+    AdminGuard,
+    AdminWriteGuard,
+    AdminMonitoringService,
+  ],
   exports: [AdminAuthService],
 })
 export class AdminModule {}

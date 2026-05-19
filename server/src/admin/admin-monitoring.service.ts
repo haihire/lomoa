@@ -1,7 +1,7 @@
 import { Injectable, Inject, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import type { Pool } from 'mysql2/promise';
-import type { RowDataPacket } from 'mysql2';
+import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 import * as os from 'os';
 import { DB_POOL } from '../db/db.module';
 
@@ -187,6 +187,8 @@ export interface AdminMonitoringDashboard {
 export class AdminMonitoringService implements OnModuleInit {
   private readonly logger = new Logger(AdminMonitoringService.name);
   private readonly SLOW_THRESHOLD_MS = 1200;
+  private readonly SYSTEM_METRIC_RETENTION_DAYS = 7;
+  private readonly MONITORING_METRIC_RETENTION_DAYS = 30;
   private readonly probeTargets: Array<{
     apiKey: string;
     path: string;
@@ -419,6 +421,32 @@ export class AdminMonitoringService implements OnModuleInit {
           durationMs,
           success ? 1 : 0,
         ],
+      );
+    }
+  }
+
+  @Cron('0 0 3 * * *')
+  async cleanupMetricRetention() {
+    try {
+      const deletedSystem = await this.deleteMetricRowsOlderThan(
+        'apm_system_metrics',
+        this.SYSTEM_METRIC_RETENTION_DAYS,
+      );
+      const deletedRequests = await this.deleteMetricRowsOlderThan(
+        'apm_request_timings',
+        this.MONITORING_METRIC_RETENTION_DAYS,
+      );
+      const deletedProbes = await this.deleteMetricRowsOlderThan(
+        'monitoring_api_probes',
+        this.MONITORING_METRIC_RETENTION_DAYS,
+      );
+
+      this.logger.log(
+        `monitoring retention cleanup completed: system=${deletedSystem}, requests=${deletedRequests}, probes=${deletedProbes}`,
+      );
+    } catch (err: unknown) {
+      this.logger.warn(
+        `monitoring retention cleanup failed: ${toErrorMessage(err)}`,
       );
     }
   }
@@ -928,6 +956,41 @@ export class AdminMonitoringService implements OnModuleInit {
       `ALTER TABLE ${tableName} ADD COLUMN ${columnDefinition}`,
     );
   }
+
+  private async deleteMetricRowsOlderThan(
+    tableName:
+      | 'apm_system_metrics'
+      | 'apm_request_timings'
+      | 'monitoring_api_probes',
+    retentionDays: number,
+  ) {
+    const chunkSize = 5000;
+    const maxBatches = 200;
+    let totalDeleted = 0;
+    let batchCount = 0;
+
+    while (true) {
+      batchCount += 1;
+      const [result] = await this.pool.execute<ResultSetHeader>(
+        `DELETE FROM ${tableName}
+         WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)
+         LIMIT ${chunkSize}`,
+        [retentionDays],
+      );
+      totalDeleted += result.affectedRows;
+
+      if (result.affectedRows < chunkSize) break;
+      if (batchCount >= maxBatches) {
+        this.logger.warn(
+          `retention cleanup batch cap reached for ${tableName}: deleted=${totalDeleted}, chunkSize=${chunkSize}, maxBatches=${maxBatches}`,
+        );
+        break;
+      }
+
+      await sleep(25);
+    }
+    return totalDeleted;
+  }
 }
 
 function toErrorMessage(error: unknown): string {
@@ -938,4 +1001,8 @@ function toErrorMessage(error: unknown): string {
 function toIsoString(value: string | Date): string {
   if (value instanceof Date) return value.toISOString();
   return new Date(value).toISOString();
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

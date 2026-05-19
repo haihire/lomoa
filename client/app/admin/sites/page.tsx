@@ -517,9 +517,9 @@ export default function AdminSitesPage() {
         </div>
       )}
       {loading ? (
-        <div className="admin-card admin-card-padded text-center">
+        <div className="admin-loading-box">
           <p className="text-sm text-[color:var(--admin-text-muted)]">
-            불러오는 중...
+            사이트 목록을 불러오는 중입니다...
           </p>
         </div>
       ) : (

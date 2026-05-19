@@ -1,9 +1,11 @@
 import { NestFactory } from '@nestjs/core';
 import { json, urlencoded } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/http-exception.filter';
 import { FileLoggerService } from './common/file-logger.service';
 import { KakaoService } from './kakao/kakao.service';
+import { AdminMonitoringService } from './admin/admin-monitoring.service';
 
 async function bootstrap() {
   const logger = new FileLoggerService();
@@ -32,6 +34,25 @@ async function bootstrap() {
   // 전역 에러 필터 - 500 이상 에러 발생 시 카카오 알림
   const kakaoService = app.get(KakaoService);
   app.useGlobalFilters(new AllExceptionsFilter(kakaoService));
+
+  const monitoring = app.get(AdminMonitoringService);
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const started = process.hrtime.bigint();
+    res.on('finish', () => {
+      const ended = process.hrtime.bigint();
+      void monitoring
+        .recordRequest({
+          scope: 'route',
+          name: req.path,
+          method: req.method,
+          path: req.path,
+          statusCode: res.statusCode,
+          durationMs: Number(ended - started) / 1_000_000,
+        })
+        .catch(() => undefined);
+    });
+    next();
+  });
 
   await app.listen(process.env.PORT ?? 3001);
 }

@@ -27,9 +27,9 @@ export class AdminCharactersRepository {
     statBuild?: string;
     classDetail?: string;
   }): Promise<number> {
-    const search = filters.search ?? null;
-    const classDetail = filters.classDetail ?? null;
-    const statBuild = filters.statBuild ?? null;
+    const search = filters.search || null;
+    const classDetail = filters.classDetail || null;
+    const statBuild = filters.statBuild || null;
     const rows = await this.prisma.$queryRaw<Array<{ total: bigint }>>`
       SELECT COUNT(*) AS total
       FROM loa_users u
@@ -48,9 +48,9 @@ export class AdminCharactersRepository {
     limit: number;
     offset: number;
   }): Promise<AdminCharacterRow[]> {
-    const search = filters.search ?? null;
-    const classDetail = filters.classDetail ?? null;
-    const statBuild = filters.statBuild ?? null;
+    const search = filters.search || null;
+    const classDetail = filters.classDetail || null;
+    const statBuild = filters.statBuild || null;
     return this.prisma.$queryRaw<AdminCharacterRow[]>`
       SELECT
         u.name,

@@ -48,18 +48,6 @@ services:
     networks:
       - daloa-net
 
-  pgloader:
-    profiles:
-      - migration
-    image: dimitri/pgloader:latest
-    container_name: daloa-pgloader
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - ./scripts/pgloader:/pgloader
-    networks:
-      - daloa-net
-
   nginx:
     profiles:
       - production

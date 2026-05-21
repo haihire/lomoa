@@ -1,0 +1,88 @@
+name: Migrate APM Data (MySQL → PostgreSQL)
+
+# One-time manual trigger: exports APM tables from the MySQL container
+# and imports them into the PostgreSQL container on EC2.
+# After confirming success, optionally removes the MySQL container.
+
+on:
+  workflow_dispatch:
+    inputs:
+      remove_mysql:
+        description: "Remove the MySQL container after successful migration"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Run migration on EC2 via SSM
+        env:
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          REMOVE_MYSQL: ${{ inputs.remove_mysql }}
+        run: |
+          remote_script="set -e
+          cd /home/ubuntu/daloa
+          git pull origin main
+          chmod +x scripts/migrate-apm-data.sh
+          bash scripts/migrate-apm-data.sh"
+
+          if [ "$REMOVE_MYSQL" = "true" ]; then
+            remote_script="$remote_script
+          echo '--- Removing MySQL container ---'
+          docker stop daloa-mysql && docker rm daloa-mysql
+          echo 'MySQL container removed.'"
+          fi
+
+          encoded=$(printf '%s' "$remote_script" | base64 -w0)
+
+          command_id=$(aws ssm send-command \
+            --region "$AWS_REGION" \
+            --document-name "AWS-RunShellScript" \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --comment "migrate-apm-data mysql->postgres" \
+            --parameters "commands=[\"set -e\",\"sudo -u ubuntu -H bash -lc \\\"echo $encoded | base64 -d | bash\\\"\"]" \
+            --query 'Command.CommandId' \
+            --output text)
+
+          echo "SSM CommandId: $command_id"
+
+          # Poll up to 5 minutes (30 × 10 s)
+          wait_exit=1
+          for i in $(seq 1 30); do
+            status=$(aws ssm get-command-invocation \
+              --region "$AWS_REGION" \
+              --command-id "$command_id" \
+              --instance-id "$EC2_INSTANCE_ID" \
+              --query 'Status' \
+              --output text 2>/dev/null || echo "Pending")
+            echo "[${i}/30] SSM status: $status"
+            if [ "$status" = "Success" ]; then
+              wait_exit=0; break
+            elif [ "$status" = "Failed" ] || [ "$status" = "Cancelled" ] || [ "$status" = "TimedOut" ]; then
+              wait_exit=1; break
+            fi
+            sleep 10
+          done
+
+          aws ssm get-command-invocation \
+            --region "$AWS_REGION" \
+            --command-id "$command_id" \
+            --instance-id "$EC2_INSTANCE_ID" \
+            --query '{Status:Status,StdOut:StandardOutputContent,StdErr:StandardErrorContent}' \
+            --output json
+
+          if [ "$wait_exit" -ne 0 ]; then
+            exit "$wait_exit"
+          fi

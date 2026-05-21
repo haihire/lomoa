@@ -37,8 +37,8 @@ export class AdminMonitoringController {
 
   @UseGuards(AdminGuard)
   @Get('admin/monitoring/system/current')
-  currentSystem() {
-    const current = this.monitoring.getCurrentSystemSnapshot();
+  async currentSystem() {
+    const current = await this.monitoring.getCurrentSystemSnapshot();
     return {
       created_at: current.at,
       cpu_percent: current.cpuPercent,

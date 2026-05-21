@@ -1,75 +1,63 @@
-// 로컬 MySQL → SQL dump 파일 생성
-import mysql from "mysql2/promise";
 import fs from "fs";
 import path from "path";
+import { Client } from "pg";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(__dirname, "dump.sql");
 
-async function dump() {
-  const conn = await mysql.createConnection({
-    host: "127.0.0.1",
-    port: 3306,
-    user: "root",
-    password: "1234",
-    database: "lost_ark",
-    multipleStatements: true,
-  });
+const client = new Client({
+  connectionString:
+    process.env.DATABASE_URL ??
+    "postgresql://daloa:change_me_user@127.0.0.1:5432/lost_ark",
+});
 
-  const [tables] = await conn.query(`SHOW TABLES`);
-  const tableKey = Object.keys(tables[0])[0];
-  const tableNames = tables.map((r) => r[tableKey]);
-
-  let sql = `SET FOREIGN_KEY_CHECKS=0;\nSET NAMES utf8mb4;\n\n`;
-
-  for (const table of tableNames) {
-    console.log(`Dumping ${table}...`);
-
-    // CREATE TABLE
-    const [[{ "Create Table": createSql }]] = await conn.query(
-      `SHOW CREATE TABLE \`${table}\``,
-    );
-    sql += `DROP TABLE IF EXISTS \`${table}\`;\n`;
-    sql += createSql + ";\n\n";
-
-    // INSERT DATA
-    const [rows] = await conn.query(`SELECT * FROM \`${table}\``);
-    if (rows.length === 0) continue;
-
-    const cols = Object.keys(rows[0])
-      .map((c) => `\`${c}\``)
-      .join(", ");
-    const chunkSize = 200;
-    for (let i = 0; i < rows.length; i += chunkSize) {
-      const chunk = rows.slice(i, i + chunkSize);
-      const vals = chunk
-        .map((row) => {
-          const v = Object.values(row).map((val) => {
-            if (val === null) return "NULL";
-            if (typeof val === "number") return val;
-            if (val instanceof Date)
-              return `'${val.toISOString().slice(0, 19).replace("T", " ")}'`;
-            return `'${String(val).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
-          });
-          return `(${v.join(", ")})`;
-        })
-        .join(",\n  ");
-      sql += `INSERT IGNORE INTO \`${table}\` (${cols}) VALUES\n  ${vals};\n`;
-    }
-    sql += "\n";
-  }
-
-  sql += `SET FOREIGN_KEY_CHECKS=1;\n`;
-
-  fs.writeFileSync(OUT, sql, "utf8");
-  console.log(
-    `\n✅ Done → ${OUT} (${(fs.statSync(OUT).size / 1024 / 1024).toFixed(2)} MB)`,
-  );
-  await conn.end();
+function literal(value) {
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+  if (value instanceof Date) return `'${value.toISOString()}'`;
+  return `'${String(value).replace(/'/g, "''")}'`;
 }
 
-dump().catch((e) => {
-  console.error(e);
+async function dump() {
+  await client.connect();
+
+  const tableResult = await client.query(`
+    SELECT tablename
+    FROM pg_tables
+    WHERE schemaname = 'public'
+    ORDER BY tablename
+  `);
+
+  let sql = "BEGIN;\n\n";
+
+  for (const { tablename } of tableResult.rows) {
+    console.log(`Dumping ${tablename}...`);
+    const rows = await client.query(`SELECT * FROM "${tablename}"`);
+    if (rows.rows.length === 0) continue;
+
+    const cols = rows.fields.map((field) => `"${field.name}"`).join(", ");
+    const chunkSize = 200;
+    for (let i = 0; i < rows.rows.length; i += chunkSize) {
+      const chunk = rows.rows.slice(i, i + chunkSize);
+      const values = chunk
+        .map((row) => `(${rows.fields.map((field) => literal(row[field.name])).join(", ")})`)
+        .join(",\n  ");
+      sql += `INSERT INTO "${tablename}" (${cols}) VALUES\n  ${values}\nON CONFLICT DO NOTHING;\n\n`;
+    }
+  }
+
+  sql += "COMMIT;\n";
+  fs.writeFileSync(OUT, sql, "utf8");
+  console.log(
+    `\nDone: ${OUT} (${(fs.statSync(OUT).size / 1024 / 1024).toFixed(2)} MB)`,
+  );
+  await client.end();
+}
+
+dump().catch(async (error) => {
+  console.error(error);
+  await client.end().catch(() => undefined);
   process.exit(1);
 });

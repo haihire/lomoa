@@ -25,6 +25,24 @@ interface TableSpec {
   columns: readonly string[];
 }
 
+interface PrereqSpec extends TableSpec {
+  pkColumn: string;
+}
+
+// loa_users FK 의존 테이블 - 데이터 없으면 먼저 복사, 있으면 스킵
+const PREREQ_SPECS: PrereqSpec[] = [
+  {
+    table: 'loa_class',
+    columns: ['idx', 'class_engraving', 'class_root', 'gender', 'class_detail'],
+    pkColumn: 'idx',
+  },
+  {
+    table: 'loa_ark_grid',
+    columns: ['seq', 'core', 'star', 'class', 'order'],
+    pkColumn: 'seq',
+  },
+];
+
 const TABLE_SPECS: Record<TableKey, TableSpec> = {
   users: {
     table: 'loa_users',
@@ -166,6 +184,30 @@ export class AdminSyncController {
     return { rows: values, lastSeq };
   }
 
+  @Post('prereq/:table/count')
+  @UseGuards(AdminWriteGuard)
+  @RequireOwner()
+  async prereqCount(@Param('table') table: string) {
+    const spec = PREREQ_SPECS.find((s) => s.table === table);
+    if (!spec) throw new BadRequestException(`unsupported prereq table: ${table}`);
+    return { total: await this.adminSyncRepo.count(spec.table) };
+  }
+
+  @Post('prereq/:table/chunk')
+  @UseGuards(AdminWriteGuard)
+  @RequireOwner()
+  async prereqChunk(
+    @Param('table') table: string,
+    @Body() body: { rows?: unknown[][] },
+  ) {
+    const spec = PREREQ_SPECS.find((s) => s.table === table);
+    if (!spec) throw new BadRequestException(`unsupported prereq table: ${table}`);
+    const rows = body?.rows;
+    if (!Array.isArray(rows) || rows.length === 0) return { inserted: 0 };
+    const inserted = await this.adminSyncRepo.insertRows(spec, rows);
+    return { inserted };
+  }
+
   @Post('check')
   @HttpCode(HttpStatus.OK)
   async syncLoginCheck(@Body() body: { username?: string; password?: string }) {
@@ -228,6 +270,58 @@ export class AdminSyncController {
             message: 'validating remote session',
             percent: 0,
           });
+
+          // users 동기화 시 FK 의존 테이블(loa_class, loa_ark_grid) 먼저 처리
+          if (table === 'users' && syncDirection === 'local-to-prod') {
+            for (const prereq of PREREQ_SPECS) {
+              const countRes = await callTargetRaw(
+                targetUrl,
+                `/api/admin/sync/prereq/${prereq.table}/count`,
+                remoteToken,
+                {},
+              );
+              const remoteCount = Number(
+                (countRes as { total?: number })?.total ?? 0,
+              );
+
+              if (remoteCount > 0) {
+                emit('progress', {
+                  phase: 'begin',
+                  message: `${prereq.table} 이미 존재 (${remoteCount}행) — 스킵`,
+                  percent: 0,
+                });
+                continue;
+              }
+
+              emit('progress', {
+                phase: 'begin',
+                message: `${prereq.table} 복사 중...`,
+                percent: 0,
+              });
+
+              const prereqRows = await this.adminSyncRepo.readAll(
+                prereq,
+                prereq.pkColumn,
+              );
+              const prereqValues = prereqRows.map((r) =>
+                prereq.columns.map((c) => normalize(r[c])),
+              );
+              for (const chunk of splitRowsByPayloadSize(prereqValues)) {
+                await callTargetRaw(
+                  targetUrl,
+                  `/api/admin/sync/prereq/${prereq.table}/chunk`,
+                  remoteToken,
+                  { rows: chunk },
+                );
+              }
+
+              emit('progress', {
+                phase: 'begin',
+                message: `${prereq.table} ${prereqRows.length}행 복사 완료`,
+                percent: 0,
+              });
+            }
+          }
 
           emit('progress', {
             phase: 'begin',

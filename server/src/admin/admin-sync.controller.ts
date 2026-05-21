@@ -25,6 +25,24 @@ interface TableSpec {
   columns: readonly string[];
 }
 
+interface PrereqSpec extends TableSpec {
+  pkColumn: string;
+}
+
+// loa_users FK 의존 테이블 - 데이터 없으면 먼저 복사, 있으면 스킵
+const PREREQ_SPECS: PrereqSpec[] = [
+  {
+    table: 'loa_class',
+    columns: ['idx', 'class_engraving', 'class_root', 'gender', 'class_detail'],
+    pkColumn: 'idx',
+  },
+  {
+    table: 'loa_ark_grid',
+    columns: ['seq', 'core', 'star', 'class', 'order'],
+    pkColumn: 'seq',
+  },
+];
+
 const TABLE_SPECS: Record<TableKey, TableSpec> = {
   users: {
     table: 'loa_users',
@@ -67,11 +85,24 @@ const SYNC_CHUNK_SIZE = 25;
 const SYNC_MAX_PAYLOAD_BYTES = 32 * 1024;
 const SYNC_CHUNK_DELAY_MS = 1000;
 
+// count/chunk 엔드포인트는 prereq 테이블도 허용
+const ALL_SPECS: Record<string, TableSpec> = {
+  ...TABLE_SPECS,
+  ...Object.fromEntries(PREREQ_SPECS.map((s) => [s.table, s])),
+};
+
 function specOrThrow(table: string): TableSpec {
   if (!(table in TABLE_SPECS)) {
     throw new BadRequestException(`unsupported table: ${table}`);
   }
   return TABLE_SPECS[table as TableKey];
+}
+
+function anySpecOrThrow(table: string): TableSpec {
+  if (!(table in ALL_SPECS)) {
+    throw new BadRequestException(`unsupported table: ${table}`);
+  }
+  return ALL_SPECS[table];
 }
 
 function seqIndexOrThrow(spec: TableSpec): number {
@@ -113,7 +144,7 @@ export class AdminSyncController {
     @Param('table') table: string,
     @Body() body: { rows?: unknown[][] },
   ) {
-    const spec = specOrThrow(table);
+    const spec = anySpecOrThrow(table);
     const rows = body?.rows;
     if (!Array.isArray(rows) || rows.length === 0) {
       return { inserted: 0 };
@@ -135,7 +166,7 @@ export class AdminSyncController {
   @UseGuards(AdminWriteGuard)
   @RequireOwner()
   async count(@Param('table') table: string) {
-    const spec = specOrThrow(table);
+    const spec = anySpecOrThrow(table);
     return { total: await this.adminSyncRepo.count(spec.table) };
   }
 
@@ -228,6 +259,58 @@ export class AdminSyncController {
             message: 'validating remote session',
             percent: 0,
           });
+
+          // users 동기화 시 FK 의존 테이블(loa_class, loa_ark_grid) 먼저 처리
+          if (table === 'users' && syncDirection === 'local-to-prod') {
+            for (const prereq of PREREQ_SPECS) {
+              const countRes = await callTargetRaw(
+                targetUrl,
+                `/api/admin/sync/${prereq.table}/count`,
+                remoteToken,
+                {},
+              );
+              const remoteCount = Number(
+                (countRes as { total?: number })?.total ?? 0,
+              );
+
+              if (remoteCount > 0) {
+                emit('progress', {
+                  phase: 'begin',
+                  message: `${prereq.table} 이미 존재 (${remoteCount}행) — 스킵`,
+                  percent: 0,
+                });
+                continue;
+              }
+
+              emit('progress', {
+                phase: 'begin',
+                message: `${prereq.table} 복사 중...`,
+                percent: 0,
+              });
+
+              const prereqRows = await this.adminSyncRepo.readAll(
+                prereq,
+                prereq.pkColumn,
+              );
+              const prereqValues = prereqRows.map((r) =>
+                prereq.columns.map((c) => normalize(r[c])),
+              );
+              for (const chunk of splitRowsByPayloadSize(prereqValues)) {
+                await callTargetRaw(
+                  targetUrl,
+                  `/api/admin/sync/${prereq.table}/chunk`,
+                  remoteToken,
+                  { rows: chunk },
+                );
+              }
+
+              emit('progress', {
+                phase: 'begin',
+                message: `${prereq.table} ${prereqRows.length}행 복사 완료`,
+                percent: 0,
+              });
+            }
+          }
 
           emit('progress', {
             phase: 'begin',

@@ -1,25 +1,26 @@
-name: Server E2E
+name: Server E2E (Manual)
+
+# Purpose:
+# - Keep this as a manual fallback/regression reproducer.
+# - PR automatic E2E runs are unified in .github/workflows/pr-ci.yml.
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'server/**'
 
 jobs:
   e2e:
     runs-on: ubuntu-latest
     services:
-      mysql:
-        image: mysql:8.0
+      postgres:
+        image: postgres:16-alpine
         env:
-          MYSQL_ROOT_PASSWORD: testpass
-          MYSQL_DATABASE: lost_ark
+          POSTGRES_DB: lost_ark
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
         ports:
-          - 3306:3306
+          - 5432:5432
         options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -ptestpass"
+          --health-cmd="pg_isready -U testuser -d lost_ark"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=10
@@ -34,11 +35,7 @@ jobs:
           --health-retries=10
 
     env:
-      DB_HOST: 127.0.0.1
-      DB_PORT: 3306
-      DB_NAME: lost_ark
-      DB_USER: root
-      DB_PASS: testpass
+      DATABASE_URL: postgresql://testuser:testpass@127.0.0.1:5432/lost_ark
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6379
       GEMINI_API_KEY: ""
@@ -58,8 +55,8 @@ jobs:
           cache: npm
           cache-dependency-path: server/package-lock.json
 
-      - name: Install MySQL client
-        run: sudo apt-get update && sudo apt-get install -y default-mysql-client
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
       - name: Install server dependencies
         working-directory: server
@@ -67,7 +64,7 @@ jobs:
 
       - name: Seed test database
         run: |
-          mysql -h 127.0.0.1 -u root -ptestpass lost_ark < scripts/init-db.sql
+          psql "postgresql://testuser:testpass@127.0.0.1:5432/lost_ark" -f scripts/init-db.sql
 
       - name: Run server E2E
         working-directory: server

@@ -4,7 +4,7 @@
   "testEnvironment": "node",
   "testRegex": "\\.integration-spec\\.ts$",
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
+    "^.+\\.ts$": "ts-jest"
   },
   "testTimeout": 15000
 }

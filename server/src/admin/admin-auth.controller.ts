@@ -1,6 +1,8 @@
 import {
   Controller,
   Post,
+  Get,
+  UseGuards,
   Body,
   HttpCode,
   HttpStatus,
@@ -8,10 +10,18 @@ import {
   Headers,
 } from '@nestjs/common';
 import { AdminAuthService } from './admin-auth.service';
+import { AdminGuard } from './admin.guard';
 
 @Controller('api/admin/auth')
 export class AdminAuthController {
   constructor(private readonly authService: AdminAuthService) {}
+
+  @UseGuards(AdminGuard)
+  @Get('me')
+  @HttpCode(HttpStatus.OK)
+  me() {
+    return { ok: true };
+  }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)

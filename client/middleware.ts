@@ -19,7 +19,7 @@ export async function middleware(req: NextRequest) {
     }
 
     try {
-      const res = await fetch(`${NEST_API}/api/admin/monitoring/dashboard`, {
+      const res = await fetch(`${NEST_API}/api/admin/auth/me`, {
         headers: { "x-admin-session": token },
         cache: "no-store",
       });
@@ -36,8 +36,17 @@ export async function middleware(req: NextRequest) {
         });
         return redirect;
       }
+      if (!res.ok) {
+        return NextResponse.json(
+          { message: "admin auth check failed" },
+          { status: 503 },
+        );
+      }
     } catch {
-      // Keep existing behavior if upstream is temporarily unavailable.
+      return NextResponse.json(
+        { message: "admin auth upstream unavailable" },
+        { status: 503 },
+      );
     }
   }
 

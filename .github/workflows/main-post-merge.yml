@@ -60,7 +60,8 @@ jobs:
           sed -i '/^NEXT_REVALIDATE_SECRET=/d' .env
           echo 'NEXT_REVALIDATE_SECRET=${NEXT_REVALIDATE_SECRET}' >> .env
           cd server && npm run build && cd ..
-          docker compose up -d --build nest"
+          docker compose up -d --build nest
+          docker restart daloa-nginx"
 
           encoded=$(printf '%s' "$remote_script" | base64 -w0)
 

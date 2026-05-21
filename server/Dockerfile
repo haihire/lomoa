@@ -8,6 +8,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --omit=dev
 
+COPY generated ./generated
 COPY dist ./dist
 
 EXPOSE 3001

@@ -31,11 +31,11 @@ export class AdminAuthRepository {
 
     await this.prisma.$executeRawUnsafe(`
       CREATE TABLE IF NOT EXISTS admin_users (
-        id SERIAL PRIMARY KEY,
+        id BIGSERIAL PRIMARY KEY,
         username VARCHAR(50) NOT NULL UNIQUE,
         password_hash VARCHAR(255) NOT NULL,
         role admin_users_role NOT NULL DEFAULT 'guest',
-        created_at TIMESTAMP(0) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
   }

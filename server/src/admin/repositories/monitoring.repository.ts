@@ -110,8 +110,8 @@ export class MonitoringRepository {
         os_name VARCHAR(64) NOT NULL DEFAULT 'Unknown',
         browser_name VARCHAR(64) NOT NULL DEFAULT 'Unknown',
         visits INT NOT NULL DEFAULT 1,
-        last_seen_at TIMESTAMP(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        created_at TIMESTAMP(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT uk_page_device_country_os_browser UNIQUE (path, device_type, country_code, os_name, browser_name)
       )
     `;
@@ -124,7 +124,7 @@ export class MonitoringRepository {
         method VARCHAR(10),
         status_code INT,
         duration_ms INT NOT NULL,
-        created_at TIMESTAMP(0) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `;
     await this.prisma.$executeRaw`
@@ -136,7 +136,7 @@ export class MonitoringRepository {
         heap_used_mb INT NOT NULL,
         total_mem_mb INT NOT NULL,
         load_avg_1m DECIMAL(10,2) NOT NULL,
-        created_at TIMESTAMP(0) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `;
     await this.prisma.$executeRaw`
@@ -149,7 +149,7 @@ export class MonitoringRepository {
         status_code INT NOT NULL,
         duration_ms INT NOT NULL,
         is_success BOOLEAN NOT NULL DEFAULT FALSE,
-        created_at TIMESTAMP(0) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `;
     await this.prisma.$executeRaw`
@@ -159,7 +159,7 @@ export class MonitoringRepository {
         site_href VARCHAR(500) NOT NULL,
         site_category VARCHAR(100) NOT NULL DEFAULT 'unknown',
         device_type apm_site_clicks_device_type NOT NULL DEFAULT 'unknown',
-        created_at TIMESTAMP(0) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `;
     await this.prisma.$executeRaw`
@@ -169,7 +169,7 @@ export class MonitoringRepository {
         video_title VARCHAR(500) NOT NULL DEFAULT '',
         channel_title VARCHAR(255) NOT NULL DEFAULT '',
         device_type apm_youtube_clicks_device_type NOT NULL DEFAULT 'unknown',
-        created_at TIMESTAMP(0) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `;
 

@@ -6,15 +6,15 @@ CREATE TYPE apm_youtube_clicks_device_type AS ENUM ('mobile', 'desktop', 'tablet
 CREATE TYPE monitoring_api_probes_cache_type AS ENUM ('redis', 'no-cache');
 
 CREATE TABLE IF NOT EXISTS admin_users (
-  id SERIAL PRIMARY KEY,
+  id BIGSERIAL PRIMARY KEY,
   username VARCHAR(50) NOT NULL UNIQUE,
   password_hash VARCHAR(255) NOT NULL,
   role admin_users_role NOT NULL DEFAULT 'guest',
-  created_at TIMESTAMP(0) NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS loa_class (
-  idx SERIAL PRIMARY KEY,
+  idx BIGSERIAL PRIMARY KEY,
   class_engraving VARCHAR(50),
   class_root VARCHAR(50),
   gender VARCHAR(50),
@@ -22,10 +22,10 @@ CREATE TABLE IF NOT EXISTS loa_class (
 );
 
 CREATE TABLE IF NOT EXISTS loa_ark_grid (
-  seq SERIAL PRIMARY KEY,
+  seq BIGSERIAL PRIMARY KEY,
   core VARCHAR(50),
   star VARCHAR(50),
-  class INT,
+  class BIGINT,
   "order" INT,
   CONSTRAINT fk_loa_ark_grid_class FOREIGN KEY (class)
     REFERENCES loa_class(idx) ON UPDATE CASCADE ON DELETE SET NULL
@@ -34,17 +34,17 @@ CREATE TABLE IF NOT EXISTS loa_ark_grid (
 CREATE INDEX IF NOT EXISTS idx_loa_ark_grid_class ON loa_ark_grid(class);
 
 CREATE TABLE IF NOT EXISTS loa_users (
-  seq SERIAL PRIMARY KEY,
+  seq BIGSERIAL PRIMARY KEY,
   server VARCHAR(50),
   level DOUBLE PRECISION,
   combat_power DECIMAL(10, 2),
-  class INT,
+  class BIGINT,
   thesix INT,
   name VARCHAR(50) UNIQUE,
   expedition_key VARCHAR(100),
-  core_sun INT,
-  core_moon INT,
-  core_star INT,
+  core_sun BIGINT,
+  core_moon BIGINT,
+  core_star BIGINT,
   stat_crit INT NOT NULL DEFAULT 0,
   stat_spec INT NOT NULL DEFAULT 0,
   stat_swift INT NOT NULL DEFAULT 0,
@@ -66,7 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_loa_users_core_star ON loa_users(core_star);
 CREATE INDEX IF NOT EXISTS idx_loa_users_stat_build ON loa_users(stat_build);
 
 CREATE TABLE IF NOT EXISTS loa_sites (
-  seq SERIAL PRIMARY KEY,
+  seq BIGSERIAL PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   href VARCHAR(500) NOT NULL UNIQUE,
   category VARCHAR(50),
@@ -75,13 +75,13 @@ CREATE TABLE IF NOT EXISTS loa_sites (
   is_active BOOLEAN DEFAULT TRUE,
   last_title VARCHAR(500),
   last_status INT,
-  checked_at TIMESTAMP(0)
+  checked_at TIMESTAMPTZ(6)
 );
 
 CREATE TABLE IF NOT EXISTS loa_class_summaries (
   class_name VARCHAR(50) PRIMARY KEY,
   summary TEXT,
-  updated_at TIMESTAMP(0) DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMPTZ(6) DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS youtube_view_snapshots (
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS youtube_view_snapshots (
   thumbnail_url VARCHAR(500) NOT NULL DEFAULT '',
   published_at DATE NOT NULL,
   duration VARCHAR(20) NOT NULL DEFAULT '',
-  view_count INT NOT NULL DEFAULT 0,
+  view_count BIGINT NOT NULL DEFAULT 0,
   recorded_date DATE NOT NULL,
   CONSTRAINT uk_video_date UNIQUE (video_id, recorded_date)
 );
@@ -107,8 +107,8 @@ CREATE TABLE IF NOT EXISTS apm_page_visits (
   user_agent VARCHAR(500) NOT NULL,
   referrer VARCHAR(500),
   visits INT NOT NULL DEFAULT 1,
-  last_seen_at TIMESTAMP(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  created_at TIMESTAMP(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   country_code VARCHAR(8) NOT NULL DEFAULT 'UNKNOWN',
   os_name VARCHAR(64) NOT NULL DEFAULT 'Unknown',
   browser_name VARCHAR(64) NOT NULL DEFAULT 'Unknown',
@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS apm_request_timings (
   method VARCHAR(10),
   status_code INT,
   duration_ms INT NOT NULL,
-  created_at TIMESTAMP(0) NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_apm_request_timings_created_at ON apm_request_timings(created_at);
@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS apm_system_metrics (
   heap_used_mb INT NOT NULL,
   total_mem_mb INT NOT NULL,
   load_avg_1m DECIMAL(10, 2) NOT NULL,
-  created_at TIMESTAMP(0) NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_apm_system_metrics_created_at ON apm_system_metrics(created_at);
@@ -151,7 +151,7 @@ CREATE TABLE IF NOT EXISTS monitoring_api_probes (
   status_code INT NOT NULL,
   duration_ms INT NOT NULL,
   is_success BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMP(0) NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_monitoring_api_probes_api_key ON monitoring_api_probes(api_key);
@@ -163,7 +163,7 @@ CREATE TABLE IF NOT EXISTS apm_site_clicks (
   site_href VARCHAR(500) NOT NULL,
   site_category VARCHAR(100) NOT NULL DEFAULT 'unknown',
   device_type apm_site_clicks_device_type NOT NULL DEFAULT 'unknown',
-  created_at TIMESTAMP(0) NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_apm_site_clicks_created_at ON apm_site_clicks(created_at);
@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS apm_youtube_clicks (
   video_title VARCHAR(500) NOT NULL DEFAULT '',
   channel_title VARCHAR(255) NOT NULL DEFAULT '',
   device_type apm_youtube_clicks_device_type NOT NULL DEFAULT 'unknown',
-  created_at TIMESTAMP(0) NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_apm_youtube_clicks_created_at ON apm_youtube_clicks(created_at);

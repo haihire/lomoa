@@ -161,7 +161,7 @@ export class UsersService {
 
     for (const slot of armory?.ArkGrid?.Slots ?? []) {
       if (!slot.Name) continue;
-      const sep = ' 肄붿뼱 : ';
+      const sep = ' 코어 : ';
       const sepIdx = slot.Name.indexOf(sep);
       const coreName =
         sepIdx >= 0 ? slot.Name.slice(sepIdx + sep.length) : slot.Name;
@@ -204,9 +204,9 @@ function readStats(armory: ArmoryData | null): {
 
   for (const stat of armory?.ArmoryProfile?.Stats ?? []) {
     const value = parseInt(stat.Value ?? '0', 10);
-    if (stat.Type === '移섎챸') statCrit = value;
-    else if (stat.Type === '?뱁솕') statSpec = value;
-    else if (stat.Type === '?좎냽') statSwift = value;
+    if (stat.Type === '치명') statCrit = value;
+    else if (stat.Type === '특화') statSpec = value;
+    else if (stat.Type === '신속') statSwift = value;
   }
 
   return { statCrit, statSpec, statSwift };

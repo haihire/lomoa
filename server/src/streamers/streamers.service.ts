@@ -3,10 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { google } from 'googleapis';
 import Redis, { type Redis as RedisClient } from 'ioredis';
-import type { Pool, RowDataPacket } from 'mysql2/promise';
 import { isLocalQuotaApisDisabled } from '../common/local-dev-flags';
-import { DB_POOL } from '../db/db.module';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import { StreamersRepository } from './streamers.repository';
 
 const CACHE_PREFIX = 'youtube:videos:page:';
 const POPULAR_CACHE_KEY = 'youtube:popular:first';
@@ -128,7 +127,7 @@ export class StreamersService implements OnModuleInit {
 
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: RedisClient,
-    @Inject(DB_POOL) private readonly db: Pool,
+    private readonly streamersRepo: StreamersRepository,
     private readonly config: ConfigService,
   ) {
     const keys: string[] = [];
@@ -320,23 +319,7 @@ export class StreamersService implements OnModuleInit {
     if (items.length === 0) return;
     const today = new Date().toISOString().slice(0, 10);
     try {
-      const values = items.map((v) => [
-        v.videoId,
-        v.title,
-        v.channelTitle,
-        v.thumbnailUrl,
-        v.publishedAt.slice(0, 19).replace('T', ' '), // DATETIME 형식 (YYYY-MM-DD HH:MM:SS)
-        v.duration,
-        v.viewCount,
-        today,
-      ]);
-      await this.db.query(
-        `INSERT INTO youtube_view_snapshots
-           (video_id, title, channel_title, thumbnail_url, published_at, duration, view_count, recorded_date)
-         VALUES ?
-         ON DUPLICATE KEY UPDATE view_count = VALUES(view_count)`,
-        [values],
-      );
+      await this.streamersRepo.upsertViewSnapshots(items, today);
       this.logger.log(
         `YouTube 조회수 스냅샷 ${items.length}건 저장 (${today})`,
       );
@@ -349,19 +332,7 @@ export class StreamersService implements OnModuleInit {
   async getViewHistory(days: number): Promise<{ date: string; avg: number }[]> {
     const safeDay = Math.min(Math.max(1, days), 365);
     try {
-      const [rows] = await this.db.query<
-        Array<RowDataPacket & { date: string; avg: number }>
-      >(
-        `SELECT
-           DATE_FORMAT(recorded_date, '%Y-%m-%d') AS date,
-           ROUND(AVG(view_count))                 AS avg
-         FROM youtube_view_snapshots
-         WHERE recorded_date >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-         GROUP BY recorded_date
-         ORDER BY recorded_date ASC`,
-        [safeDay],
-      );
-      return rows;
+      return this.streamersRepo.findViewHistory(safeDay);
     } catch (err: unknown) {
       this.logger.error(`YouTube 히스토리 조회 실패: ${toErrorMessage(err)}`);
       return [];

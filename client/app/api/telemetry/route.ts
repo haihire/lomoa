@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const NEST_API = process.env.NEST_API_URL ?? "http://localhost:3001";
+const TELEMETRY_INGEST_TOKEN = process.env.TELEMETRY_INGEST_TOKEN ?? "";
 
 function detectOs(userAgent: string): string {
   const ua = userAgent.toLowerCase();
@@ -24,7 +25,14 @@ function detectBrowser(userAgent: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
+  let body: Record<string, unknown>;
+  try {
+    body = (await req.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ ok: false, message: "invalid telemetry payload" }, { status: 400 });
+  }
+  const origin = req.headers.get("origin");
+  const referer = req.headers.get("referer");
   const userAgent =
     (typeof body?.userAgent === "string" && body.userAgent) ||
     req.headers.get("user-agent") ||
@@ -60,13 +68,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
 
-  const res = await fetch(`${NEST_API}${endpoint}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(enrichedBody),
-  });
+  try {
+    const res = await fetch(`${NEST_API}${endpoint}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(origin ? { origin } : {}),
+        ...(referer ? { referer } : {}),
+        ...(TELEMETRY_INGEST_TOKEN
+          ? { "x-telemetry-token": TELEMETRY_INGEST_TOKEN }
+          : {}),
+      },
+      body: JSON.stringify(enrichedBody),
+    });
 
-  return NextResponse.json(await res.json().catch(() => ({})), {
-    status: res.status,
-  });
+    return NextResponse.json(await res.json().catch(() => ({})), {
+      status: res.status,
+    });
+  } catch {
+    return NextResponse.json({ ok: false }, { status: 503 });
+  }
 }

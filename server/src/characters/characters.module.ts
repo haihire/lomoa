@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
 import { CharactersController } from './characters.controller';
 import { CharactersService } from './characters.service';
-import { DbModule } from '../db/db.module';
 import { RedisModule } from '../redis/redis.module';
+import { CharactersRepository } from './characters.repository';
 
 @Module({
-  imports: [DbModule, RedisModule],
+  imports: [RedisModule],
   controllers: [CharactersController],
-  providers: [CharactersService],
+  providers: [CharactersService, CharactersRepository],
 })
 export class CharactersModule {}

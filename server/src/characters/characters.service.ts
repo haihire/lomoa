@@ -1,21 +1,10 @@
 import { Injectable, Inject } from '@nestjs/common';
-import type { Pool } from 'mysql2/promise';
-import type { RowDataPacket } from 'mysql2';
 import type { Redis } from 'ioredis';
-import { DB_POOL } from '../db/db.module';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import { CharactersRepository } from './characters.repository';
 
 const CACHE_KEY = 'characters:stat-builds';
 const CACHE_TTL_SEC = 3600; // 1시간
-
-interface StatBuildRow extends RowDataPacket {
-  classDetail: string;
-  classEngraving: string | null;
-  statCrit: number;
-  statSpec: number;
-  statSwift: number;
-  level: number;
-}
 
 // 장비 스탯 수치(치명/특화/신속) 기반 빌드 분류
 // 전체 합산 대비 비율 15% 이상이어야 해당 스탯을 "투자됨"으로 인정
@@ -73,7 +62,7 @@ export function classifyStatBuild(
 @Injectable()
 export class CharactersService {
   constructor(
-    @Inject(DB_POOL) private readonly pool: Pool,
+    private readonly charactersRepo: CharactersRepository,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {}
 
@@ -93,19 +82,7 @@ export class CharactersService {
   }
 
   private async _buildResult() {
-    const [rows] = await this.pool.execute<StatBuildRow[]>(`
-      SELECT
-        c.class_detail    AS classDetail,
-        c.class_engraving AS classEngraving,
-        u.stat_crit       AS statCrit,
-        u.stat_spec       AS statSpec,
-        u.stat_swift      AS statSwift,
-        u.level           AS level
-      FROM loa_users u
-      LEFT JOIN loa_class c ON u.class = c.idx
-      WHERE (u.core_sun IS NOT NULL OR u.core_moon IS NOT NULL OR u.core_star IS NOT NULL)
-        AND (u.stat_crit > 0 OR u.stat_spec > 0 OR u.stat_swift > 0)
-    `);
+    const rows = await this.charactersRepo.findStatBuildRows();
 
     // Step 1: 직업+각인+빌드타입 별로 각각 집계
     const rawMap = new Map<

@@ -13,12 +13,12 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
+    "test": "node ./scripts/run-jest.cjs --runInBand",
+    "test:watch": "node ./scripts/run-jest.cjs --watch",
+    "test:cov": "node ./scripts/run-jest.cjs --coverage --runInBand",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json",
-    "test:integration": "jest --config ./test/jest-integration.json --runInBand"
+    "test:e2e": "node ./scripts/run-jest.cjs --config ./test/jest-e2e.json --runInBand",
+    "test:integration": "node ./scripts/run-jest.cjs --config ./test/jest-integration.json --runInBand"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -28,18 +28,15 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/schedule": "^6.1.1",
-<<<<<<< Updated upstream
-=======
     "@prisma/adapter-pg": "7.8.0",
     "@prisma/client": "7.8.0",
->>>>>>> Stashed changes
     "@types/ioredis": "^4.28.10",
     "axios": "^1.15.0",
     "bcrypt": "^6.0.0",
     "cheerio": "^1.2.0",
     "googleapis": "^171.4.0",
     "ioredis": "^5.10.1",
-    "mysql2": "^3.20.0",
+    "pg": "^8.21.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
@@ -62,10 +59,7 @@
     "globals": "^16.0.0",
     "jest": "^30.0.0",
     "prettier": "^3.4.2",
-<<<<<<< Updated upstream
-=======
     "prisma": "7.8.0",
->>>>>>> Stashed changes
     "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
@@ -84,7 +78,7 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.ts$": "ts-jest"
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"

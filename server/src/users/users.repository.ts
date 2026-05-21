@@ -20,6 +20,8 @@ export interface UserUpsertRow {
 
 @Injectable()
 export class UsersRepository {
+  private static readonly UPSERT_CHUNK_SIZE = 1000;
+
   constructor(private readonly prisma: PrismaService) {}
 
   async findClassIdx(
@@ -66,62 +68,65 @@ export class UsersRepository {
       return;
     }
 
-    const COLUMN_COUNT = 14;
-    const valuesSql = rows
-      .map((_, rowIndex) => {
-        const start = rowIndex * COLUMN_COUNT + 1;
-        const placeholders = Array.from(
-          { length: COLUMN_COUNT },
-          (_, i) => `$${start + i}`,
-        );
-        return `(${placeholders.join(', ')})`;
-      })
-      .join(', ');
+    for (let i = 0; i < rows.length; i += UsersRepository.UPSERT_CHUNK_SIZE) {
+      const chunk = rows.slice(i, i + UsersRepository.UPSERT_CHUNK_SIZE);
+      const columnCount = 14;
+      const valuesSql = chunk
+        .map((_, rowIndex) => {
+          const start = rowIndex * columnCount + 1;
+          const placeholders = Array.from(
+            { length: columnCount },
+            (_, n) => `$${start + n}`,
+          );
+          return `(${placeholders.join(', ')})`;
+        })
+        .join(', ');
 
-    const params = rows.flatMap((row) => [
-      row.server,
-      row.name,
-      row.level,
-      row.combatPower,
-      row.classIdx,
-      row.thesix,
-      row.expeditionKey,
-      row.coreSun,
-      row.coreMoon,
-      row.coreStar,
-      row.statCrit,
-      row.statSpec,
-      row.statSwift,
-      row.statBuild,
-    ]);
+      const params = chunk.flatMap((row) => [
+        row.server,
+        row.name,
+        row.level,
+        row.combatPower,
+        row.classIdx,
+        row.thesix,
+        row.expeditionKey,
+        row.coreSun,
+        row.coreMoon,
+        row.coreStar,
+        row.statCrit,
+        row.statSpec,
+        row.statSwift,
+        row.statBuild,
+      ]);
 
-    await this.prisma.$executeRawUnsafe(
-      `
-      INSERT INTO loa_users (
-        server, name, level, combat_power, class, thesix, expedition_key,
-        core_sun, core_moon, core_star, stat_crit, stat_spec, stat_swift, stat_build
-      )
-      VALUES ${valuesSql}
-      ON CONFLICT (name) DO UPDATE SET
-        level = EXCLUDED.level,
-        combat_power = COALESCE(EXCLUDED.combat_power, loa_users.combat_power),
-        class = EXCLUDED.class,
-        thesix = EXCLUDED.thesix,
-        expedition_key = EXCLUDED.expedition_key,
-        core_sun = COALESCE(EXCLUDED.core_sun, loa_users.core_sun),
-        core_moon = COALESCE(EXCLUDED.core_moon, loa_users.core_moon),
-        core_star = COALESCE(EXCLUDED.core_star, loa_users.core_star),
-        stat_crit = COALESCE(NULLIF(EXCLUDED.stat_crit, 0), loa_users.stat_crit),
-        stat_spec = COALESCE(NULLIF(EXCLUDED.stat_spec, 0), loa_users.stat_spec),
-        stat_swift = COALESCE(NULLIF(EXCLUDED.stat_swift, 0), loa_users.stat_swift),
-        stat_build = CASE
-          WHEN EXCLUDED.stat_crit = 0 AND EXCLUDED.stat_spec = 0 AND EXCLUDED.stat_swift = 0
-            THEN loa_users.stat_build
-          ELSE EXCLUDED.stat_build
-        END
-    `,
-      ...params,
-    );
+      await this.prisma.$executeRawUnsafe(
+        `
+        INSERT INTO loa_users (
+          server, name, level, combat_power, class, thesix, expedition_key,
+          core_sun, core_moon, core_star, stat_crit, stat_spec, stat_swift, stat_build
+        )
+        VALUES ${valuesSql}
+        ON CONFLICT (name) DO UPDATE SET
+          level = EXCLUDED.level,
+          combat_power = COALESCE(EXCLUDED.combat_power, loa_users.combat_power),
+          class = EXCLUDED.class,
+          thesix = EXCLUDED.thesix,
+          expedition_key = EXCLUDED.expedition_key,
+          core_sun = COALESCE(EXCLUDED.core_sun, loa_users.core_sun),
+          core_moon = COALESCE(EXCLUDED.core_moon, loa_users.core_moon),
+          core_star = COALESCE(EXCLUDED.core_star, loa_users.core_star),
+          stat_crit = COALESCE(NULLIF(EXCLUDED.stat_crit, 0), loa_users.stat_crit),
+          stat_spec = COALESCE(NULLIF(EXCLUDED.stat_spec, 0), loa_users.stat_spec),
+          stat_swift = COALESCE(NULLIF(EXCLUDED.stat_swift, 0), loa_users.stat_swift),
+          stat_build = CASE
+            WHEN EXCLUDED.stat_crit = 0 AND EXCLUDED.stat_spec = 0 AND EXCLUDED.stat_swift = 0
+              THEN loa_users.stat_build
+            ELSE EXCLUDED.stat_build
+          END
+      `,
+        ...params,
+      );
+    }
   }
 
   async findStats(): Promise<{

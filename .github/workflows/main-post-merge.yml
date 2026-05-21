@@ -6,6 +6,7 @@ on:
     paths:
       - 'server/**'
       - 'client/**'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -53,12 +54,14 @@ jobs:
         run: |
           remote_script="set -e
           cd /home/ubuntu/daloa
+          git reset --hard HEAD
           git pull origin main
           grep -q '^NEXT_REVALIDATE_URL=' .env || echo 'NEXT_REVALIDATE_URL=https://www.daloa.kr/api/revalidate' >> .env
           sed -i '/^NEXT_REVALIDATE_SECRET=/d' .env
           echo 'NEXT_REVALIDATE_SECRET=${NEXT_REVALIDATE_SECRET}' >> .env
           cd server && npm run build && cd ..
-          docker compose up -d --build nest"
+          docker compose up -d --build nest
+          docker restart daloa-nginx"
 
           encoded=$(printf '%s' "$remote_script" | base64 -w0)
 
@@ -71,13 +74,23 @@ jobs:
             --query 'Command.CommandId' \
             --output text)
 
-          set +e
-          aws ssm wait command-executed \
-            --region "$AWS_REGION" \
-            --command-id "$command_id" \
-            --instance-id "$EC2_INSTANCE_ID"
-          wait_exit=$?
-          set -e
+          # SSM waiter 기본값(100s)이 너무 짧으므로 직접 폴링 (최대 10분)
+          wait_exit=1
+          for i in $(seq 1 60); do
+            status=$(aws ssm get-command-invocation \
+              --region "$AWS_REGION" \
+              --command-id "$command_id" \
+              --instance-id "$EC2_INSTANCE_ID" \
+              --query 'Status' \
+              --output text 2>/dev/null || echo "Pending")
+            echo "[${i}/60] SSM status: $status"
+            if [ "$status" = "Success" ]; then
+              wait_exit=0; break
+            elif [ "$status" = "Failed" ] || [ "$status" = "Cancelled" ] || [ "$status" = "TimedOut" ]; then
+              wait_exit=1; break
+            fi
+            sleep 10
+          done
 
           aws ssm get-command-invocation \
             --region "$AWS_REGION" \

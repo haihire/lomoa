@@ -34,6 +34,7 @@ jobs:
         run: |
           remote_script="set -e
           cd /home/ubuntu/daloa
+          git reset --hard HEAD
           git pull origin main
           chmod +x scripts/migrate-apm-data.sh
           bash scripts/migrate-apm-data.sh"

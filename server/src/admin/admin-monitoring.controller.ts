@@ -1,9 +1,28 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Headers,
+  HttpException,
+  HttpStatus,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request } from 'express';
 import { AdminGuard } from './admin.guard';
 import { AdminMonitoringService } from './admin-monitoring.service';
 
 @Controller('api')
 export class AdminMonitoringController {
+  private readonly telemetryToken = process.env.TELEMETRY_INGEST_TOKEN ?? '';
+  private readonly telemetryWindowMs = 60_000;
+  private readonly telemetryMaxPerWindow = 12_000;
+  private telemetryWindowStartedAt = Date.now();
+  private telemetryWindowCount = 0;
+
   constructor(private readonly monitoring: AdminMonitoringService) {}
 
   @UseGuards(AdminGuard)
@@ -16,6 +35,7 @@ export class AdminMonitoringController {
     return this.monitoring.getDashboard(rangeDays);
   }
 
+  @UseGuards(AdminGuard)
   @Get('admin/monitoring/system/current')
   currentSystem() {
     const current = this.monitoring.getCurrentSystemSnapshot();
@@ -33,6 +53,8 @@ export class AdminMonitoringController {
 
   @Post('telemetry/page-visit')
   pageVisit(
+    @Req() req: Request,
+    @Headers('x-telemetry-token') token: string | undefined,
     @Body()
     body: {
       path?: string;
@@ -44,6 +66,7 @@ export class AdminMonitoringController {
       browserName?: string;
     },
   ) {
+    this.assertTelemetryAllowed(req, token);
     return this.monitoring.recordPageVisit({
       path: body.path ?? '/',
       deviceType: body.deviceType ?? 'unknown',
@@ -57,6 +80,8 @@ export class AdminMonitoringController {
 
   @Post('telemetry/request')
   request(
+    @Req() req: Request,
+    @Headers('x-telemetry-token') token: string | undefined,
     @Body()
     body: {
       scope?: 'route' | 'section';
@@ -67,6 +92,7 @@ export class AdminMonitoringController {
       durationMs?: number;
     },
   ) {
+    this.assertTelemetryAllowed(req, token);
     if (!body.name || typeof body.durationMs !== 'number') {
       return { ok: false };
     }
@@ -82,6 +108,8 @@ export class AdminMonitoringController {
 
   @Post('telemetry/site-click')
   siteClick(
+    @Req() req: Request,
+    @Headers('x-telemetry-token') token: string | undefined,
     @Body()
     body: {
       siteName?: string;
@@ -90,6 +118,7 @@ export class AdminMonitoringController {
       deviceType?: 'mobile' | 'desktop' | 'tablet' | 'bot' | 'unknown';
     },
   ) {
+    this.assertTelemetryAllowed(req, token);
     if (!body.siteHref) {
       return { ok: false };
     }
@@ -103,6 +132,8 @@ export class AdminMonitoringController {
 
   @Post('telemetry/youtube-click')
   youtubeClick(
+    @Req() req: Request,
+    @Headers('x-telemetry-token') token: string | undefined,
     @Body()
     body: {
       videoId?: string;
@@ -111,6 +142,7 @@ export class AdminMonitoringController {
       deviceType?: 'mobile' | 'desktop' | 'tablet' | 'bot' | 'unknown';
     },
   ) {
+    this.assertTelemetryAllowed(req, token);
     if (!body.videoId) {
       return { ok: false };
     }
@@ -120,5 +152,38 @@ export class AdminMonitoringController {
       channelTitle: body.channelTitle ?? '',
       deviceType: body.deviceType ?? 'unknown',
     });
+  }
+
+  private assertTelemetryAllowed(req: Request, token: string | undefined) {
+    if (this.telemetryToken) {
+      if (!token || token !== this.telemetryToken) {
+        throw new ForbiddenException('invalid telemetry token');
+      }
+      this.consumeTelemetryBudget();
+      return;
+    }
+
+    const origin = req.headers.origin;
+    const referer = req.headers.referer;
+    if (!origin && !referer) {
+      throw new ForbiddenException('telemetry origin missing');
+    }
+    this.consumeTelemetryBudget();
+  }
+
+  private consumeTelemetryBudget() {
+    const now = Date.now();
+    if (now - this.telemetryWindowStartedAt >= this.telemetryWindowMs) {
+      this.telemetryWindowStartedAt = now;
+      this.telemetryWindowCount = 0;
+    }
+
+    this.telemetryWindowCount += 1;
+    if (this.telemetryWindowCount > this.telemetryMaxPerWindow) {
+      throw new HttpException(
+        'telemetry rate limit exceeded',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
   }
 }

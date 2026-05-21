@@ -1,0 +1,26 @@
+LOAD DATABASE
+  FROM  __MYSQL_URL__
+  INTO  __POSTGRES_URL__
+
+WITH include drop,
+  create tables,
+  create indexes,
+  reset sequences,
+  foreign keys,
+  downcase identifiers
+
+CAST
+  type tinyint   when (= precision 1) to boolean drop typemod using tinyint-to-boolean,
+  type tinyint   to smallint drop typemod,
+  type bigint    when unsigned to numeric drop typemod,
+  type bigint    to bigint drop typemod,
+  type int       when unsigned to bigint drop typemod,
+  type int       to integer drop typemod,
+  type mediumint to integer drop typemod,
+  type smallint  to smallint drop typemod,
+  type varchar   to text drop typemod,
+  type char      to text drop typemod,
+  type datetime  to timestamptz drop typemod,
+  type date      to date drop typemod,
+  type time      to time drop typemod,
+  type enum      to text drop typemod;

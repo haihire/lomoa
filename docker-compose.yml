@@ -1,36 +1,17 @@
 services:
-  mysql:
-    profiles:
-      - production
-    image: mysql:8.0
-    container_name: daloa-mysql
+  postgres:
+    image: postgres:16-alpine
+    container_name: daloa-postgres
     restart: unless-stopped
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --skip-character-set-client-handshake
-      - --init-connect=SET NAMES utf8mb4
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS}
-      MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASS}
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
     volumes:
-      - mysql_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./scripts/dump.sql:/docker-entrypoint-initdb.d/02-data.sql
     healthcheck:
-      test:
-        [
-          "CMD",
-          "mysqladmin",
-          "ping",
-          "-h",
-          "localhost",
-          "-u",
-          "root",
-          "-p${DB_ROOT_PASS}",
-        ]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -55,13 +36,27 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DB_HOST: mysql
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASS}@postgres:5432/${DB_NAME}
       REDIS_HOST: redis
     volumes:
       - ./.env:/app/.env
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_started
+    networks:
+      - daloa-net
+
+  pgloader:
+    profiles:
+      - migration
+    image: dimitri/pgloader:latest
+    container_name: daloa-pgloader
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./scripts/pgloader:/pgloader
     networks:
       - daloa-net
 
@@ -83,7 +78,7 @@ services:
       - daloa-net
 
 volumes:
-  mysql_data:
+  postgres_data:
   redis_data:
 
 networks:

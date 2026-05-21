@@ -1,9 +1,7 @@
-import { Injectable, Inject } from '@nestjs/common';
-import type { Pool } from 'mysql2/promise';
-import type { RowDataPacket } from 'mysql2';
-import { DB_POOL } from '../db/db.module';
-import { LostarkService } from '../lostark/lostark.service';
+import { Injectable } from '@nestjs/common';
 import { classifyStatBuild } from '../characters/characters.service';
+import { LostarkService } from '../lostark/lostark.service';
+import { UsersRepository, type UserUpsertRow } from './users.repository';
 
 interface Sibling {
   ServerName: string;
@@ -32,87 +30,30 @@ interface ArmoryData {
   } | null;
 }
 
-interface ClassIdxRow extends RowDataPacket {
-  idx: number;
-}
-
-interface ArkGridRow extends RowDataPacket {
-  seq: number;
-  star: string;
-}
-
-interface TotalRow extends RowDataPacket {
-  total: number;
-}
-
-interface ByClassRow extends RowDataPacket {
-  classRoot: string;
-  count: number;
-  avgLevel: number;
-}
-
-interface ByServerRow extends RowDataPacket {
-  server: string;
-  count: number;
-}
-
-interface ByClassDetailRow extends RowDataPacket {
-  classDetail: string;
-  count: number;
-}
-
-interface TheSixRateRow extends RowDataPacket {
-  classRoot: string;
-  theSixCount: number;
-  total: number;
-}
-
 @Injectable()
 export class UsersService {
   constructor(
-    @Inject(DB_POOL) private readonly pool: Pool,
+    private readonly usersRepo: UsersRepository,
     private readonly lostark: LostarkService,
   ) {}
 
-  // loa_class 테이블에서 class_detail(직업명) + class_engraving(각인명)으로 idx 조회
   private async findClassIdx(
     charClassName: string,
     arkTitle: string | null,
   ): Promise<number | null> {
-    // ArkPassive.Title(각인명)이 있으면 class_detail + class_engraving으로 정확히 매칭
     if (arkTitle) {
-      const [rows] = await this.pool.execute<ClassIdxRow[]>(
-        'SELECT idx FROM loa_class WHERE class_detail = ? AND class_engraving = ? LIMIT 1',
-        [charClassName, arkTitle],
-      );
-      if (rows.length > 0) return rows[0].idx;
+      const exact = await this.usersRepo.findClassIdx(charClassName, arkTitle);
+      if (exact !== null) return exact;
     }
-    // fallback: class_detail(직업명)만으로 첫 번째 행
-    const [rows] = await this.pool.execute<ClassIdxRow[]>(
-      'SELECT idx FROM loa_class WHERE class_detail = ? LIMIT 1',
-      [charClassName],
-    );
-    return rows.length > 0 ? rows[0].idx : null;
+    return this.usersRepo.findClassIdx(charClassName);
   }
 
   async existsByName(name: string): Promise<boolean> {
-    const [rows] = await this.pool.execute<RowDataPacket[]>(
-      'SELECT 1 FROM loa_users WHERE name = ? LIMIT 1',
-      [name],
-    );
-    return rows.length > 0;
+    return this.usersRepo.existsByName(name);
   }
 
   async needsCombatPower(name: string): Promise<boolean> {
-    const [rows] = await this.pool.execute<RowDataPacket[]>(
-      'SELECT 1 FROM loa_users WHERE name = ? AND combat_power IS NULL LIMIT 1',
-      [name],
-    );
-    // 없으면(rows.length === 0) 두 가지 경우: 아예 없거나(INSERT 필요) or cp 있음(스킵)
-    // 아예 없는지 추가 확인
-    if (rows.length > 0) return true; // 있는데 cp 없음 → 업데이트 필요
-    const exists = await this.existsByName(name);
-    return !exists; // 아예 없으면 INSERT 필요 → true
+    return this.usersRepo.needsCombatPower(name);
   }
 
   async searchAndUpsert(characterName: string): Promise<{
@@ -127,39 +68,20 @@ export class UsersService {
       thesix: boolean;
     }[];
   }> {
-    // 1. 원정대 전체 조회
     const siblings = await this.lostark.fetchSiblings<Sibling[]>(characterName);
     if (!siblings || siblings.length === 0) {
-      throw new Error(`캐릭터를 찾을 수 없습니다: ${characterName}`);
+      throw new Error(`Character not found: ${characterName}`);
     }
 
-    // 2. theSix 계산 (아이템레벨 상위 6명)
-    const parseLevel = (s: string) => parseFloat((s || '0').replace(/,/g, ''));
+    const parseLevel = (value: string) =>
+      parseFloat((value || '0').replace(/,/g, ''));
     const sorted = [...siblings].sort(
       (a, b) => parseLevel(b.ItemAvgLevel) - parseLevel(a.ItemAvgLevel),
     );
     const theSixSet = new Set(sorted.slice(0, 6).map((s) => s.CharacterName));
-
-    // 3. expedition_key = 서버:최고레벨캐릭터명
     const topChar = sorted[0];
     const expeditionKey = `${topChar.ServerName}:${topChar.CharacterName}`;
 
-    // 4. 각 캐릭터 armories 조회 (순차 · rate-limited) → 버퍼에 누적
-    type Row = {
-      server: string;
-      name: string;
-      level: number;
-      combatPower: number | null;
-      classIdx: number | null;
-      thesix: number;
-      expeditionKey: string;
-      coreSun: number | null;
-      coreMoon: number | null;
-      coreStar: number | null;
-      statCrit: number;
-      statSpec: number;
-      statSwift: number;
-    };
     const results: {
       name: string;
       class: string;
@@ -168,55 +90,13 @@ export class UsersService {
       level: number;
       thesix: boolean;
     }[] = [];
-    const buffer: Row[] = [];
+    const buffer: UserUpsertRow[] = [];
 
     for (const sib of siblings) {
-      let classDetail: string | null = null;
-      let coreSun: number | null = null;
-      let coreMoon: number | null = null;
-      let coreStar: number | null = null;
-      let statCrit = 0;
-      let statSpec = 0;
-      let statSwift = 0;
-      let combatPower: number | null = null;
-      try {
-        // API 요청은 lostark.service의 직렬 큐 + rate limiter로 한 건씩 순차 전송
-        const armory = await this.lostark.fetchArmory<ArmoryData | null>(
-          sib.CharacterName,
-        );
-        classDetail = armory?.ArkPassive?.Title ?? null;
-
-        const cpStr = armory?.ArmoryProfile?.CombatPower ?? null;
-        if (cpStr) combatPower = parseFloat(cpStr.replace(/,/g, '')) || null;
-
-        for (const st of armory?.ArmoryProfile?.Stats ?? []) {
-          const v = parseInt(st.Value ?? '0', 10);
-          if (st.Type === '치명') statCrit = v;
-          else if (st.Type === '특화') statSpec = v;
-          else if (st.Type === '신속') statSwift = v;
-        }
-
-        const slots: { Name: string }[] = armory?.ArkGrid?.Slots ?? [];
-        for (const slot of slots) {
-          if (!slot.Name) continue;
-          const sep = ' 코어 : ';
-          const sepIdx = slot.Name.indexOf(sep);
-          const coreName =
-            sepIdx >= 0 ? slot.Name.slice(sepIdx + sep.length) : slot.Name;
-          const [rows] = await this.pool.execute<ArkGridRow[]>(
-            'SELECT seq, star FROM loa_ark_grid WHERE core = ? LIMIT 1',
-            [coreName],
-          );
-          if (rows.length === 0) continue;
-          const { seq, star } = rows[0];
-          if (star === '질서의 해') coreSun = seq;
-          else if (star === '질서의 달') coreMoon = seq;
-          else if (star === '질서의 별') coreStar = seq;
-        }
-      } catch {
-        // 비공개 or API 에러 → null로 처리
-      }
-
+      const armory = await this.safeFetchArmory(sib.CharacterName);
+      const classDetail = armory?.ArkPassive?.Title ?? null;
+      const stats = readStats(armory);
+      const cores = await this.readCores(armory);
       const level = parseLevel(sib.ItemAvgLevel);
       const thesix = theSixSet.has(sib.CharacterName) ? 1 : 0;
       const classIdx = await this.findClassIdx(
@@ -224,21 +104,25 @@ export class UsersService {
         classDetail,
       );
 
-      // DB 저장은 버퍼에 쌓아두고 나중에 한 번에 처리
       buffer.push({
         server: sib.ServerName,
         name: sib.CharacterName,
         level,
-        combatPower,
+        combatPower: readCombatPower(armory),
         classIdx,
         thesix,
         expeditionKey,
-        coreSun,
-        coreMoon,
-        coreStar,
-        statCrit,
-        statSpec,
-        statSwift,
+        coreSun: cores.coreSun,
+        coreMoon: cores.coreMoon,
+        coreStar: cores.coreStar,
+        statCrit: stats.statCrit,
+        statSpec: stats.statSpec,
+        statSwift: stats.statSwift,
+        statBuild: classifyStatBuild(
+          stats.statCrit,
+          stats.statSpec,
+          stats.statSwift,
+        ),
       });
 
       results.push({
@@ -251,54 +135,45 @@ export class UsersService {
       });
     }
 
-    // 5. 원정대 전체를 단일 배치 INSERT (N번 → 1번)
     if (buffer.length > 0) {
-      const placeholders = buffer
-        .map(() => '(?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-        .join(',');
-      const params = buffer.flatMap((r) => [
-        r.server,
-        r.name,
-        r.level,
-        r.combatPower,
-        r.classIdx,
-        r.thesix,
-        r.expeditionKey,
-        r.coreSun,
-        r.coreMoon,
-        r.coreStar,
-        r.statCrit,
-        r.statSpec,
-        r.statSwift,
-        classifyStatBuild(r.statCrit, r.statSpec, r.statSwift),
-      ]);
-      await this.pool.execute(
-        `INSERT INTO loa_users
-           (server, name, level, combat_power, class, thesix, expedition_key,
-            core_sun, core_moon, core_star, stat_crit, stat_spec, stat_swift, stat_build)
-         VALUES ${placeholders}
-         ON DUPLICATE KEY UPDATE
-           level          = VALUES(level),
-           combat_power   = COALESCE(VALUES(combat_power), combat_power),
-           class          = VALUES(class),
-           thesix         = VALUES(thesix),
-           expedition_key = VALUES(expedition_key),
-           core_sun       = COALESCE(VALUES(core_sun),  core_sun),
-           core_moon      = COALESCE(VALUES(core_moon), core_moon),
-           core_star      = COALESCE(VALUES(core_star), core_star),
-           stat_crit      = COALESCE(NULLIF(VALUES(stat_crit),  0), stat_crit),
-           stat_spec      = COALESCE(NULLIF(VALUES(stat_spec),  0), stat_spec),
-           stat_swift     = COALESCE(NULLIF(VALUES(stat_swift), 0), stat_swift),
-           stat_build     = IF(
-             VALUES(stat_crit) = 0 AND VALUES(stat_spec) = 0 AND VALUES(stat_swift) = 0,
-             stat_build,
-             VALUES(stat_build)
-           )`,
-        params,
-      );
+      await this.usersRepo.upsertUsers(buffer);
     }
 
     return { saved: results.length, expeditionKey, characters: results };
+  }
+
+  private async safeFetchArmory(name: string): Promise<ArmoryData | null> {
+    try {
+      return await this.lostark.fetchArmory<ArmoryData | null>(name);
+    } catch {
+      return null;
+    }
+  }
+
+  private async readCores(armory: ArmoryData | null): Promise<{
+    coreSun: number | null;
+    coreMoon: number | null;
+    coreStar: number | null;
+  }> {
+    let coreSun: number | null = null;
+    let coreMoon: number | null = null;
+    let coreStar: number | null = null;
+
+    for (const slot of armory?.ArkGrid?.Slots ?? []) {
+      if (!slot.Name) continue;
+      const sep = ' 肄붿뼱 : ';
+      const sepIdx = slot.Name.indexOf(sep);
+      const coreName =
+        sepIdx >= 0 ? slot.Name.slice(sepIdx + sep.length) : slot.Name;
+      const row = await this.usersRepo.findArkGridByCore(coreName);
+      if (!row) continue;
+
+      if (row.star?.includes('해')) coreSun = row.seq;
+      else if (row.star?.includes('달')) coreMoon = row.seq;
+      else if (row.star?.includes('별')) coreStar = row.seq;
+    }
+
+    return { coreSun, coreMoon, coreStar };
   }
 
   async getStats(): Promise<{
@@ -308,42 +183,31 @@ export class UsersService {
     byClassDetail: { classDetail: string; count: number }[];
     theSixRate: { classRoot: string; theSixCount: number; total: number }[];
   }> {
-    const [totalRows] = await this.pool.execute<TotalRow[]>(
-      'SELECT COUNT(*) as total FROM loa_users',
-    );
-    const total = totalRows[0]?.total ?? 0;
-
-    // loa_class JOIN으로 직업명(class_root) 기준 통계
-    const [byClass] = await this.pool.execute<ByClassRow[]>(
-      `SELECT COALESCE(c.class_root, '미확인') as classRoot,
-              COUNT(*) as count,
-              ROUND(AVG(u.level), 2) as avgLevel
-       FROM loa_users u
-       LEFT JOIN loa_class c ON u.class = c.idx
-       GROUP BY c.class_root ORDER BY count DESC`,
-    );
-
-    const [byServer] = await this.pool.execute<ByServerRow[]>(
-      `SELECT server, COUNT(*) as count
-       FROM loa_users GROUP BY server ORDER BY count DESC`,
-    );
-
-    const [byClassDetail] = await this.pool.execute<ByClassDetailRow[]>(
-      `SELECT COALESCE(c.class_detail, '미확인') as classDetail, COUNT(*) as count
-       FROM loa_users u
-       LEFT JOIN loa_class c ON u.class = c.idx
-       GROUP BY c.class_detail ORDER BY count DESC`,
-    );
-
-    const [theSixRate] = await this.pool.execute<TheSixRateRow[]>(
-      `SELECT COALESCE(c.class_root, '미확인') as classRoot,
-              SUM(u.thesix) as theSixCount,
-              COUNT(*) as total
-       FROM loa_users u
-       LEFT JOIN loa_class c ON u.class = c.idx
-       GROUP BY c.class_root ORDER BY theSixCount DESC`,
-    );
-
-    return { total, byClass, byServer, byClassDetail, theSixRate };
+    return this.usersRepo.findStats();
   }
+}
+
+function readCombatPower(armory: ArmoryData | null): number | null {
+  const cpStr = armory?.ArmoryProfile?.CombatPower ?? null;
+  if (!cpStr) return null;
+  return parseFloat(cpStr.replace(/,/g, '')) || null;
+}
+
+function readStats(armory: ArmoryData | null): {
+  statCrit: number;
+  statSpec: number;
+  statSwift: number;
+} {
+  let statCrit = 0;
+  let statSpec = 0;
+  let statSwift = 0;
+
+  for (const stat of armory?.ArmoryProfile?.Stats ?? []) {
+    const value = parseInt(stat.Value ?? '0', 10);
+    if (stat.Type === '移섎챸') statCrit = value;
+    else if (stat.Type === '?뱁솕') statSpec = value;
+    else if (stat.Type === '?좎냽') statSwift = value;
+  }
+
+  return { statCrit, statSpec, statSwift };
 }

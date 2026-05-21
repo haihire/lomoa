@@ -4,7 +4,6 @@ import {
   Controller,
   HttpCode,
   HttpStatus,
-  Inject,
   MessageEvent,
   Param,
   Post,
@@ -13,12 +12,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { RowDataPacket, ResultSetHeader } from 'mysql2';
-import type { Pool } from 'mysql2/promise';
 import { Observable } from 'rxjs';
 import { AdminAuthService } from './admin-auth.service';
 import { AdminWriteGuard, RequireOwner } from './admin.guard';
-import { DB_POOL } from '../db/db.module';
+import { AdminSyncRepository } from './repositories/admin-sync.repository';
 
 type TableKey = 'users' | 'sites';
 type SyncDirection = 'local-to-prod' | 'prod-to-local';
@@ -95,7 +92,7 @@ function directionOrThrow(direction: string): SyncDirection {
 @Controller('api/admin/sync')
 export class AdminSyncController {
   constructor(
-    @Inject(DB_POOL) private readonly pool: Pool,
+    private readonly adminSyncRepo: AdminSyncRepository,
     private readonly config: ConfigService,
     private readonly authService: AdminAuthService,
   ) {}
@@ -105,14 +102,7 @@ export class AdminSyncController {
   @RequireOwner()
   async begin(@Param('table') table: string) {
     const spec = specOrThrow(table);
-    const conn = await this.pool.getConnection();
-    try {
-      await conn.query('SET FOREIGN_KEY_CHECKS=0');
-      await conn.query(`TRUNCATE TABLE \`${spec.table}\``);
-      await conn.query('SET FOREIGN_KEY_CHECKS=1');
-    } finally {
-      conn.release();
-    }
+    await this.adminSyncRepo.truncate(spec.table);
     return { ok: true, table: spec.table };
   }
 
@@ -137,19 +127,8 @@ export class AdminSyncController {
       }
     }
 
-    const colList = spec.columns.map((c) => `\`${c}\``).join(', ');
-    const conn = await this.pool.getConnection();
-    try {
-      await conn.query('SET FOREIGN_KEY_CHECKS=0');
-      const [result] = await conn.query<ResultSetHeader>(
-        `INSERT INTO \`${spec.table}\` (${colList}) VALUES ?`,
-        [rows],
-      );
-      await conn.query('SET FOREIGN_KEY_CHECKS=1');
-      return { inserted: result.affectedRows };
-    } finally {
-      conn.release();
-    }
+    const inserted = await this.adminSyncRepo.insertRows(spec, rows);
+    return { inserted };
   }
 
   @Post(':table/count')
@@ -157,10 +136,7 @@ export class AdminSyncController {
   @RequireOwner()
   async count(@Param('table') table: string) {
     const spec = specOrThrow(table);
-    const [rows] = await this.pool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) AS total FROM \`${spec.table}\``,
-    );
-    return { total: Number(rows[0]?.total ?? 0) };
+    return { total: await this.adminSyncRepo.count(spec.table) };
   }
 
   @Post(':table/chunk-read')
@@ -177,11 +153,10 @@ export class AdminSyncController {
     const safeAfterSeq = Number.isFinite(afterSeq) ? afterSeq : 0;
     const safeLimitInput = Number.isFinite(limit) ? limit : SYNC_CHUNK_SIZE;
     const safeLimit = Math.max(1, Math.min(SYNC_CHUNK_SIZE, safeLimitInput));
-    const colList = spec.columns.map((c) => `\`${c}\``).join(', ');
-
-    const [rows] = await this.pool.query<RowDataPacket[]>(
-      `SELECT ${colList} FROM \`${spec.table}\` WHERE seq > ? ORDER BY seq ASC LIMIT ?`,
-      [safeAfterSeq, safeLimit],
+    const rows = await this.adminSyncRepo.readChunk(
+      spec,
+      safeAfterSeq,
+      safeLimit,
     );
     const values = rows.map((r) => spec.columns.map((c) => normalize(r[c])));
     const lastRow = rows[rows.length - 1];
@@ -267,7 +242,7 @@ export class AdminSyncController {
             {},
           );
 
-          const total = await readLocalCount(this.pool, spec.table);
+          const total = await this.adminSyncRepo.count(spec.table);
 
           emit('progress', {
             phase: 'count',
@@ -286,11 +261,13 @@ export class AdminSyncController {
           let lastSeq = 0;
 
           while (!cancelled) {
-            const values = await readLocalChunk(
-              this.pool,
+            const rows = await this.adminSyncRepo.readChunk(
               spec,
               lastSeq,
               SYNC_CHUNK_SIZE,
+            );
+            const values = rows.map((row) =>
+              spec.columns.map((column) => normalize(row[column])),
             );
 
             if (values.length === 0) break;
@@ -354,27 +331,6 @@ export class AdminSyncController {
       };
     });
   }
-}
-
-async function readLocalCount(pool: Pool, table: string): Promise<number> {
-  const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT COUNT(*) AS total FROM \`${table}\``,
-  );
-  return Number(rows[0]?.total ?? 0);
-}
-
-async function readLocalChunk(
-  pool: Pool,
-  spec: TableSpec,
-  lastSeq: number,
-  limit: number,
-): Promise<unknown[][]> {
-  const colList = spec.columns.map((c) => `\`${c}\``).join(', ');
-  const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT ${colList} FROM \`${spec.table}\` WHERE seq > ? ORDER BY seq ASC LIMIT ?`,
-    [lastSeq, limit],
-  );
-  return rows.map((r) => spec.columns.map((c) => normalize(r[c])));
 }
 
 function normalize(v: unknown): unknown {

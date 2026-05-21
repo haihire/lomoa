@@ -51,10 +51,113 @@ jobs:
         run: npm run lint
 
       - name: Test
-        run: npm test -- --passWithNoTests
+        run: npm test
 
       - name: Build
         run: npm run build
+
+  integration:
+    name: Server Integration (PostgreSQL)
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: testdb
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+        options: >-
+          --health-cmd="pg_isready -U testuser -d testdb"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run integration tests
+        run: npm run test:integration
+        env:
+          DATABASE_URL: postgresql://testuser:testpass@127.0.0.1:5432/testdb
+
+  e2e:
+    name: Server E2E (PostgreSQL + Redis)
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: lost_ark
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U testuser -d lost_ark"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: postgresql://testuser:testpass@127.0.0.1:5432/lost_ark
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      GEMINI_API_KEY: ""
+      YOUTUBE_API_KEY: ""
+      LOSTARK_API_KEY: ""
+      KAKAO_REST_API_KEY: ""
+      KAKAO_REFRESH_TOKEN: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Seed test database
+        run: |
+          psql "postgresql://testuser:testpass@127.0.0.1:5432/lost_ark" -f scripts/init-db.sql
+
+      - name: Run server E2E
+        working-directory: server
+        run: npm run test:e2e
 
   client:
     name: Client (lint + test + build)
@@ -90,7 +193,7 @@ jobs:
 
   quality-gate:
     runs-on: ubuntu-latest
-    needs: [changes, server, client]
+    needs: [changes, server, integration, e2e, client]
     if: always()
     steps:
       - name: Check all required jobs passed
@@ -98,26 +201,46 @@ jobs:
           server_needed="${{ needs.changes.outputs.server }}"
           client_needed="${{ needs.changes.outputs.client }}"
           server_result="${{ needs.server.result }}"
+          integration_result="${{ needs.integration.result }}"
+          e2e_result="${{ needs.e2e.result }}"
           client_result="${{ needs.client.result }}"
 
           failed=0
 
           if [ "$server_needed" = "true" ] && [ "$server_result" != "success" ]; then
-            echo "❌ Server job: $server_result"
+            echo "Server job: $server_result"
             failed=1
           elif [ "$server_needed" = "true" ]; then
-            echo "✅ Server job: passed"
+            echo "Server job: passed"
           else
-            echo "⏭️  Server job: skipped (no server changes)"
+            echo "Server job: skipped (no server changes)"
+          fi
+
+          if [ "$server_needed" = "true" ] && [ "$integration_result" != "success" ]; then
+            echo "Integration job: $integration_result"
+            failed=1
+          elif [ "$server_needed" = "true" ]; then
+            echo "Integration job: passed"
+          else
+            echo "Integration job: skipped (no server changes)"
+          fi
+
+          if [ "$server_needed" = "true" ] && [ "$e2e_result" != "success" ]; then
+            echo "E2E job: $e2e_result"
+            failed=1
+          elif [ "$server_needed" = "true" ]; then
+            echo "E2E job: passed"
+          else
+            echo "E2E job: skipped (no server changes)"
           fi
 
           if [ "$client_needed" = "true" ] && [ "$client_result" != "success" ]; then
-            echo "❌ Client job: $client_result"
+            echo "Client job: $client_result"
             failed=1
           elif [ "$client_needed" = "true" ]; then
-            echo "✅ Client job: passed"
+            echo "Client job: passed"
           else
-            echo "⏭️  Client job: skipped (no client changes)"
+            echo "Client job: skipped (no client changes)"
           fi
 
           if [ "$failed" -eq 1 ]; then

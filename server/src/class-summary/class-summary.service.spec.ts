@@ -1,9 +1,6 @@
 import { ConfigService } from '@nestjs/config';
+import { ClassSummaryRepository } from './class-summary.repository';
 import { ClassSummaryService } from './class-summary.service';
-
-type MockPool = {
-  execute: jest.Mock;
-};
 
 type MockRedis = {
   get: jest.Mock;
@@ -13,8 +10,12 @@ type MockRedis = {
 };
 
 function createService(localDisable = 'true') {
-  const pool: MockPool = {
-    execute: jest.fn(),
+  const repo: Partial<Record<keyof ClassSummaryRepository, jest.Mock>> = {
+    count: jest.fn(),
+    exists: jest.fn(),
+    upsert: jest.fn(),
+    findAll: jest.fn(),
+    findOne: jest.fn(),
   };
 
   const redis: MockRedis = {
@@ -35,11 +36,11 @@ function createService(localDisable = 'true') {
   } as unknown as ConfigService;
 
   const service = new ClassSummaryService(
-    pool as never,
+    repo as never,
     redis as never,
     config,
   );
-  return { service, pool };
+  return { service, repo };
 }
 
 describe('ClassSummaryService', () => {
@@ -47,17 +48,17 @@ describe('ClassSummaryService', () => {
     jest.restoreAllMocks();
   });
 
-  it('LOCAL_DISABLE_QUOTA_APIS=true면 초기 직업 크롤링을 시작하지 않는다', async () => {
-    const { service, pool } = createService();
+  it('skips initial crawling when quota APIs are disabled', async () => {
+    const { service, repo } = createService();
     const runAllSpy = jest.spyOn(service, 'runAll').mockResolvedValue();
 
     await service.onModuleInit();
 
-    expect(pool.execute).not.toHaveBeenCalled();
+    expect(repo.count).not.toHaveBeenCalled();
     expect(runAllSpy).not.toHaveBeenCalled();
   });
 
-  it('LOCAL_DISABLE_QUOTA_APIS=true면 스케줄 직업 크롤링을 시작하지 않는다', async () => {
+  it('skips scheduled crawling when quota APIs are disabled', async () => {
     const { service } = createService();
     const runAllSpy = jest.spyOn(service, 'runAll').mockResolvedValue();
 
@@ -66,7 +67,7 @@ describe('ClassSummaryService', () => {
     expect(runAllSpy).not.toHaveBeenCalled();
   });
 
-  it('LOCAL_DISABLE_QUOTA_APIS=true면 수동 runAll도 내부 처리 없이 종료한다', async () => {
+  it('manual runAll exits early when quota APIs are disabled', async () => {
     const { service } = createService();
     const processSpy = jest.spyOn(service as never, 'processClass');
 

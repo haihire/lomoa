@@ -1,20 +1,21 @@
 import {
+  Inject,
   Injectable,
+  Logger,
   OnModuleInit,
   UnauthorizedException,
-  Logger,
-  Inject,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
-import type { Pool } from 'mysql2/promise';
-import type { RowDataPacket } from 'mysql2';
 import type Redis from 'ioredis';
-import { DB_POOL } from '../db/db.module';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import {
+  AdminAuthRepository,
+  type AdminRole,
+} from './repositories/admin-auth.repository';
 
-export type AdminRole = 'master' | 'guest';
+export type { AdminRole };
 
 export interface AdminSessionPayload {
   sub: number;
@@ -22,14 +23,7 @@ export interface AdminSessionPayload {
   role: AdminRole;
 }
 
-interface AdminUserRow extends RowDataPacket {
-  id: number;
-  username: string;
-  password_hash: string;
-  role: AdminRole;
-}
-
-const SESSION_TTL = 60 * 60 * 1; // 1시간
+const SESSION_TTL = 60 * 60;
 const SESSION_PREFIX = 'admin:session:';
 
 @Injectable()
@@ -37,32 +31,18 @@ export class AdminAuthService implements OnModuleInit {
   private readonly logger = new Logger(AdminAuthService.name);
 
   constructor(
-    @Inject(DB_POOL) private readonly pool: Pool,
+    private readonly adminAuthRepo: AdminAuthRepository,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly config: ConfigService,
   ) {}
 
   async onModuleInit() {
-    await this.ensureTable();
+    await this.adminAuthRepo.ensureTable();
     try {
       await this.seedAccounts();
     } catch (err: unknown) {
-      this.logger.error(
-        `관리자 계정 시딩 실패 (서버는 정상 기동): ${String(err)}`,
-      );
+      this.logger.error(`Admin account seed failed: ${String(err)}`);
     }
-  }
-
-  private async ensureTable() {
-    await this.pool.execute(`
-      CREATE TABLE IF NOT EXISTS admin_users (
-        id            INT AUTO_INCREMENT PRIMARY KEY,
-        username      VARCHAR(50)  NOT NULL UNIQUE,
-        password_hash VARCHAR(255) NOT NULL,
-        role          ENUM('master','guest') NOT NULL DEFAULT 'guest',
-        created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
-    `);
   }
 
   private async seedAccounts() {
@@ -71,14 +51,14 @@ export class AdminAuthService implements OnModuleInit {
 
     if (!ownerPw || !demoPw) {
       this.logger.warn(
-        'ADMIN_OWNER_PASSWORD 또는 ADMIN_DEMO_PASSWORD 미설정 — 관리자 계정 시딩 스킵',
+        'ADMIN_OWNER_PASSWORD or ADMIN_DEMO_PASSWORD is missing. Skip admin seed.',
       );
       return;
     }
 
     await this.upsertAccount('master', ownerPw, 'master');
     await this.upsertAccount('guest', demoPw, 'guest');
-    this.logger.log('관리자 계정 시딩 완료');
+    this.logger.log('Admin accounts are ready');
   }
 
   private async upsertAccount(
@@ -86,33 +66,23 @@ export class AdminAuthService implements OnModuleInit {
     plainPassword: string,
     role: AdminRole,
   ) {
-    const [rows] = await this.pool.execute<AdminUserRow[]>(
-      'SELECT id FROM admin_users WHERE username = ? LIMIT 1',
-      [username],
-    );
-    if (rows[0]) return; // 이미 존재하면 스킵
+    const existing = await this.adminAuthRepo.findByUsername(username);
+    if (existing) return;
 
     const hash = await bcrypt.hash(plainPassword, 12);
-    await this.pool.execute(
-      'INSERT INTO admin_users (username, password_hash, role) VALUES (?, ?, ?)',
-      [username, hash, role],
-    );
+    await this.adminAuthRepo.createAccount(username, hash, role);
   }
 
   async login(
     username: string,
     password: string,
   ): Promise<{ sessionId: string; role: AdminRole }> {
-    const [rows] = await this.pool.execute<AdminUserRow[]>(
-      'SELECT id, username, password_hash, role FROM admin_users WHERE username = ? LIMIT 1',
-      [username],
-    );
-    const user = rows[0];
+    const user = await this.adminAuthRepo.findByUsername(username);
 
-    if (!user) throw new UnauthorizedException('인증 실패');
+    if (!user) throw new UnauthorizedException('Authentication failed');
 
     const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) throw new UnauthorizedException('인증 실패');
+    if (!valid) throw new UnauthorizedException('Authentication failed');
 
     const sessionId = crypto.randomUUID();
     const payload: AdminSessionPayload = {

@@ -1,0 +1,186 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+   url = env("DATABASE_URL")
+}
+
+model admin_users {
+  id            BigInt   @id(map: "idx_16499_primary") @default(autoincrement())
+  username      String   @unique(map: "idx_16499_username")
+  password_hash String
+  role          String   @default("guest")
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+}
+
+model apm_page_visits {
+  id           BigInt   @id(map: "idx_16508_primary") @default(autoincrement())
+  path         String
+  device_type  String   @default("unknown")
+  user_agent   String
+  referrer     String?
+  visits       Int      @default(1)
+  last_seen_at DateTime @default(now()) @db.Timestamptz(6)
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  country_code String   @default("UNKNOWN")
+  os_name      String   @default("Unknown")
+  browser_name String   @default("Unknown")
+
+  @@unique([path, device_type, country_code, os_name, browser_name], map: "idx_16508_uk_page_device_country_os_browser")
+}
+
+model apm_request_timings {
+  id          BigInt   @id(map: "idx_16522_primary") @default(autoincrement())
+  scope       String
+  name        String
+  path        String?
+  method      String?
+  status_code Int?
+  duration_ms Int
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([created_at], map: "idx_16522_idx_created_at")
+  @@index([scope, name], map: "idx_16522_idx_scope_name")
+}
+
+model apm_site_clicks {
+  id            BigInt   @id(map: "idx_16530_primary") @default(autoincrement())
+  site_name     String
+  site_href     String
+  site_category String   @default("unknown")
+  device_type   String   @default("unknown")
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([created_at], map: "idx_16530_idx_created_at")
+  @@index([site_href], map: "idx_16530_idx_site_href")
+}
+
+model apm_system_metrics {
+  id             BigInt   @id(map: "idx_16540_primary") @default(autoincrement())
+  cpu_percent    Decimal  @db.Decimal(5, 1)
+  memory_percent Decimal  @db.Decimal(5, 1)
+  rss_mb         Int
+  heap_used_mb   Int
+  total_mem_mb   Int
+  load_avg_1m    Decimal  @db.Decimal(10, 2)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([created_at], map: "idx_16540_idx_created_at")
+}
+
+model apm_youtube_clicks {
+  id            BigInt   @id(map: "idx_16546_primary") @default(autoincrement())
+  video_id      String
+  video_title   String   @default("")
+  channel_title String   @default("")
+  device_type   String   @default("unknown")
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([created_at], map: "idx_16546_idx_created_at")
+  @@index([video_id], map: "idx_16546_idx_video_id")
+}
+
+model loa_ark_grid {
+  seq                                         BigInt      @id(map: "idx_16557_primary") @default(autoincrement())
+  core                                        String?
+  star                                        String?
+  class                                       BigInt?
+  order                                       Int?
+  loa_class                                   loa_class?  @relation(fields: [class], references: [idx], map: "FK_loa_ark_grid_lost_ark.loa_class")
+  loa_users_loa_users_core_moonToloa_ark_grid loa_users[] @relation("loa_users_core_moonToloa_ark_grid")
+  loa_users_loa_users_core_starToloa_ark_grid loa_users[] @relation("loa_users_core_starToloa_ark_grid")
+  loa_users_loa_users_core_sunToloa_ark_grid  loa_users[] @relation("loa_users_core_sunToloa_ark_grid")
+
+  @@index([class], map: "idx_16557_FK_loa_ark_grid_lost_ark.loa_class")
+}
+
+model loa_class {
+  idx             BigInt         @id(map: "idx_16564_primary") @default(autoincrement())
+  class_engraving String?
+  class_root      String?
+  gender          String?
+  class_detail    String?
+  loa_ark_grid    loa_ark_grid[]
+  loa_users       loa_users[]
+}
+
+model loa_class_summaries {
+  class_name String    @id(map: "idx_16570_primary")
+  summary    String?
+  updated_at DateTime? @db.Timestamptz(6)
+}
+
+model loa_sites {
+  seq         BigInt    @id(map: "idx_16576_primary") @default(autoincrement())
+  name        String
+  href        String    @unique(map: "idx_16576_uq_href")
+  category    String?
+  description String?
+  icon        String?
+  is_active   Boolean?  @default(true)
+  last_title  String?
+  last_status Int?
+  checked_at  DateTime? @db.Timestamptz(6)
+}
+
+model loa_users {
+  seq                                            BigInt        @id(map: "idx_16584_primary") @default(autoincrement())
+  server                                         String?
+  level                                          Float?
+  combat_power                                   Decimal?      @db.Decimal(10, 2)
+  class                                          BigInt?
+  thesix                                         Int?
+  name                                           String?       @unique(map: "idx_16584_uq_name")
+  expedition_key                                 String?
+  core_sun                                       BigInt?
+  core_moon                                      BigInt?
+  core_star                                      BigInt?
+  stat_crit                                      Int           @default(0)
+  stat_spec                                      Int           @default(0)
+  stat_swift                                     Int           @default(0)
+  stat_build                                     String?
+  loa_ark_grid_loa_users_core_moonToloa_ark_grid loa_ark_grid? @relation("loa_users_core_moonToloa_ark_grid", fields: [core_moon], references: [seq], map: "core_moons")
+  loa_ark_grid_loa_users_core_starToloa_ark_grid loa_ark_grid? @relation("loa_users_core_starToloa_ark_grid", fields: [core_star], references: [seq], map: "core_stars")
+  loa_ark_grid_loa_users_core_sunToloa_ark_grid  loa_ark_grid? @relation("loa_users_core_sunToloa_ark_grid", fields: [core_sun], references: [seq], map: "core_suns")
+  loa_class                                      loa_class?    @relation(fields: [class], references: [idx], map: "fk_users_class")
+
+  @@index([core_moon], map: "idx_16584_core_moon")
+  @@index([core_star], map: "idx_16584_core_star")
+  @@index([core_sun], map: "idx_16584_core_sun")
+  @@index([class], map: "idx_16584_fk_users_class")
+  @@index([stat_build], map: "idx_16584_idx_stat_build")
+}
+
+model monitoring_api_probes {
+  id          BigInt   @id(map: "idx_16595_primary") @default(autoincrement())
+  api_key     String
+  path        String
+  method      String
+  cache_type  String   @default("no-cache")
+  status_code Int
+  duration_ms Int
+  is_success  Boolean  @default(false)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([api_key], map: "idx_16595_idx_api_key")
+  @@index([created_at], map: "idx_16595_idx_created_at")
+}
+
+model youtube_view_snapshots {
+  id            BigInt   @id(map: "idx_16605_primary") @default(autoincrement())
+  video_id      String
+  title         String   @default("")
+  channel_title String   @default("")
+  thumbnail_url String   @default("")
+  published_at  DateTime @db.Date
+  duration      String   @default("")
+  view_count    BigInt   @default(0)
+  recorded_date DateTime @db.Date
+
+  @@unique([video_id, recorded_date], map: "idx_16605_uk_video_date")
+  @@index([published_at], map: "idx_16605_idx_published_at")
+  @@index([recorded_date], map: "idx_16605_idx_recorded_date")
+}

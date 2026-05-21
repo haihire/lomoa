@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
-import { DbModule } from './db/db.module';
 import { LostarkModule } from './lostark/lostark.module';
 import { CharactersModule } from './characters/characters.module';
 import { SitesModule } from './sites/sites.module';
@@ -12,12 +11,12 @@ import { UsersModule } from './users/users.module';
 import { ClassSummaryModule } from './class-summary/class-summary.module';
 import { AdminModule } from './admin/admin.module';
 import { RevalidateService } from './revalidate/revalidate.service';
+import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
-    DbModule,
     LostarkModule,
     CharactersModule,
     SitesModule,
@@ -27,6 +26,7 @@ import { RevalidateService } from './revalidate/revalidate.service';
     UsersModule,
     ClassSummaryModule,
     AdminModule,
+    PrismaModule,
   ],
   providers: [RevalidateService],
 })

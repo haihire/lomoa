@@ -62,7 +62,7 @@ export default function SyncPage() {
     state.phase !== "idle" && state.phase !== "done" && state.phase !== "error";
 
   const directionLabel =
-    direction === "local-to-prod" ? "프로덕션으로 동기화" : "로컬과 동기화";
+    direction === "local-to-prod" ? "local → production" : "production → local";
 
   function requireMaster(action: string) {
     if (!isGuest) return true;
@@ -194,7 +194,7 @@ export default function SyncPage() {
     <div>
       <div className="space-y-6">
         <header>
-          <h1 className="text-2xl font-bold">서버 동기화</h1>
+          <h1 className="text-2xl font-bold">동기화</h1>
           <p className="mt-2 text-sm text-gray-400">
             동기화 방향을 선택한 뒤 실행합니다. 대상 테이블은{" "}
             <strong className="text-red-400">TRUNCATE</strong> 후 전체 복사됩니다.
@@ -217,7 +217,7 @@ export default function SyncPage() {
                 : "bg-gray-800 text-gray-300"
             }`}
           >
-            프로덕션으로 동기화
+            local → production
           </button>
           <button
             type="button"
@@ -229,7 +229,7 @@ export default function SyncPage() {
                 : "bg-gray-800 text-gray-300"
             }`}
           >
-            로컬과 동기화
+            production → local
           </button>
         </div>
 
@@ -298,7 +298,7 @@ export default function SyncPage() {
                     disabled={running}
                     className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-700"
                   >
-                    {running ? "동기화 중..." : "서버와 동기화"}
+                    {running ? "동기화 중..." : "동기화"}
                   </button>
                   {running && (
                     <button

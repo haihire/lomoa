@@ -47,6 +47,16 @@ export class AdminSyncRepository {
     return Number(rows[0]?.total ?? 0);
   }
 
+  async readAll(
+    spec: SyncTableSpec,
+    pkColumn: string,
+  ): Promise<Record<string, unknown>[]> {
+    const columns = spec.columns.map(quoteIdent).join(', ');
+    return this.prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+      `SELECT ${columns} FROM ${quoteIdent(spec.table)} ORDER BY ${quoteIdent(pkColumn)} ASC`,
+    );
+  }
+
   async readChunk(
     spec: SyncTableSpec,
     afterSeq: number,

@@ -53,6 +53,7 @@ jobs:
         run: |
           remote_script="set -e
           cd /home/ubuntu/daloa
+          git reset --hard HEAD
           git pull origin main
           grep -q '^NEXT_REVALIDATE_URL=' .env || echo 'NEXT_REVALIDATE_URL=https://www.daloa.kr/api/revalidate' >> .env
           sed -i '/^NEXT_REVALIDATE_SECRET=/d' .env

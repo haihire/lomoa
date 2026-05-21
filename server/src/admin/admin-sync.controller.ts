@@ -85,11 +85,24 @@ const SYNC_CHUNK_SIZE = 25;
 const SYNC_MAX_PAYLOAD_BYTES = 32 * 1024;
 const SYNC_CHUNK_DELAY_MS = 1000;
 
+// count/chunk 엔드포인트는 prereq 테이블도 허용
+const ALL_SPECS: Record<string, TableSpec> = {
+  ...TABLE_SPECS,
+  ...Object.fromEntries(PREREQ_SPECS.map((s) => [s.table, s])),
+};
+
 function specOrThrow(table: string): TableSpec {
   if (!(table in TABLE_SPECS)) {
     throw new BadRequestException(`unsupported table: ${table}`);
   }
   return TABLE_SPECS[table as TableKey];
+}
+
+function anySpecOrThrow(table: string): TableSpec {
+  if (!(table in ALL_SPECS)) {
+    throw new BadRequestException(`unsupported table: ${table}`);
+  }
+  return ALL_SPECS[table];
 }
 
 function seqIndexOrThrow(spec: TableSpec): number {
@@ -131,7 +144,7 @@ export class AdminSyncController {
     @Param('table') table: string,
     @Body() body: { rows?: unknown[][] },
   ) {
-    const spec = specOrThrow(table);
+    const spec = anySpecOrThrow(table);
     const rows = body?.rows;
     if (!Array.isArray(rows) || rows.length === 0) {
       return { inserted: 0 };
@@ -153,7 +166,7 @@ export class AdminSyncController {
   @UseGuards(AdminWriteGuard)
   @RequireOwner()
   async count(@Param('table') table: string) {
-    const spec = specOrThrow(table);
+    const spec = anySpecOrThrow(table);
     return { total: await this.adminSyncRepo.count(spec.table) };
   }
 
@@ -182,30 +195,6 @@ export class AdminSyncController {
     const lastSeq =
       rows.length > 0 ? Number(lastRow[seqColumn] ?? afterSeq) : afterSeq;
     return { rows: values, lastSeq };
-  }
-
-  @Post('prereq/:table/count')
-  @UseGuards(AdminWriteGuard)
-  @RequireOwner()
-  async prereqCount(@Param('table') table: string) {
-    const spec = PREREQ_SPECS.find((s) => s.table === table);
-    if (!spec) throw new BadRequestException(`unsupported prereq table: ${table}`);
-    return { total: await this.adminSyncRepo.count(spec.table) };
-  }
-
-  @Post('prereq/:table/chunk')
-  @UseGuards(AdminWriteGuard)
-  @RequireOwner()
-  async prereqChunk(
-    @Param('table') table: string,
-    @Body() body: { rows?: unknown[][] },
-  ) {
-    const spec = PREREQ_SPECS.find((s) => s.table === table);
-    if (!spec) throw new BadRequestException(`unsupported prereq table: ${table}`);
-    const rows = body?.rows;
-    if (!Array.isArray(rows) || rows.length === 0) return { inserted: 0 };
-    const inserted = await this.adminSyncRepo.insertRows(spec, rows);
-    return { inserted };
   }
 
   @Post('check')
@@ -276,7 +265,7 @@ export class AdminSyncController {
             for (const prereq of PREREQ_SPECS) {
               const countRes = await callTargetRaw(
                 targetUrl,
-                `/api/admin/sync/prereq/${prereq.table}/count`,
+                `/api/admin/sync/${prereq.table}/count`,
                 remoteToken,
                 {},
               );
@@ -309,7 +298,7 @@ export class AdminSyncController {
               for (const chunk of splitRowsByPayloadSize(prereqValues)) {
                 await callTargetRaw(
                   targetUrl,
-                  `/api/admin/sync/prereq/${prereq.table}/chunk`,
+                  `/api/admin/sync/${prereq.table}/chunk`,
                   remoteToken,
                   { rows: chunk },
                 );

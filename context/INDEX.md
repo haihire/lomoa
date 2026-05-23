@@ -10,7 +10,7 @@
 | 파일                                         | 내용                                             | 언제 읽는가                              |
 | -------------------------------------------- | ------------------------------------------------ | ---------------------------------------- |
 | [architecture.md](./architecture.md)         | 전체 시스템 구조, 컴포넌트 역할, 포트, 배포 흐름 | 새 기능 추가 / 모듈 간 연결 작업 시      |
-| [db-schema.md](./db-schema.md)               | MariaDB 테이블 스키마 전체                       | 쿼리 작성 / 스키마 변경 시               |
+| [db-schema.md](./db-schema.md)               | PostgreSQL 테이블 스키마 전체                    | 쿼리 작성 / 스키마 변경 시               |
 | [api-contracts.md](./api-contracts.md)       | 서버 REST API 엔드포인트 목록, 요청·응답 형태    | 클라이언트 fetch / 서버 컨트롤러 수정 시 |
 | [env-config.md](./env-config.md)             | 환경변수 목록과 기본값, 필수 여부                | .env 설정 / 새 환경변수 추가 시          |
 | [redis-keys.md](./redis-keys.md)             | Redis 키 네임스페이스, TTL, 캐시 무효화 시점     | Redis 관련 서비스 수정 / 캐시 디버깅 시  |
@@ -53,12 +53,12 @@ cd server && npm run test:e2e  # E2E (docker-compose up -d 선행)
 
 ### 주요 포트
 
-| 서비스  | 포트 |
-| ------- | ---- |
-| Next.js | 3000 |
-| NestJS  | 3001 |
-| MariaDB | 3306 |
-| Redis   | 6379 |
+| 서비스     | 포트 |
+| ---------- | ---- |
+| Next.js    | 3000 |
+| NestJS     | 3001 |
+| PostgreSQL | 5432 |
+| Redis      | 6379 |
 
 ### EC2 SSH 접속
 

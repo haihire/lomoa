@@ -361,6 +361,7 @@ export default function AdminSitesPage() {
   }
 
   const [purging, setPurging] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   async function handlePurge() {
     if (!requireMaster("사이트 캐시 새로고침")) return;
@@ -368,6 +369,27 @@ export default function AdminSitesPage() {
     await purgeSitesCache();
     setPurging(false);
     alert("사이트 캐시가 무효화됐습니다.");
+  }
+
+  async function handleDownload() {
+    setDownloading(true);
+    try {
+      const res = await fetch("/api/admin/sync/sites/local-export");
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        alert(`다운로드 실패 (${res.status}): ${txt}`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `loa_sites-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
+    }
   }
 
   const isProcessing = busyMessage !== null;
@@ -391,6 +413,14 @@ export default function AdminSitesPage() {
           )}
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={handleDownload}
+            disabled={downloading || isProcessing}
+            className="admin-btn admin-btn-secondary"
+            title="현재 사이트 데이터를 JSON으로 다운로드"
+          >
+            {downloading ? "다운로드 중..." : "다운로드"}
+          </button>
           <button
             onClick={handlePurge}
             disabled={purging || isProcessing}

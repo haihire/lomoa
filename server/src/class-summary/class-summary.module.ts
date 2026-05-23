@@ -1,11 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ClassSummaryController } from './class-summary.controller';
 import { ClassSummaryService } from './class-summary.service';
-import { DbModule } from '../db/db.module';
+import { ClassSummaryRepository } from './class-summary.repository';
 
 @Module({
-  imports: [DbModule],
   controllers: [ClassSummaryController],
-  providers: [ClassSummaryService],
+  providers: [ClassSummaryService, ClassSummaryRepository],
 })
 export class ClassSummaryModule {}

@@ -3,8 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { buildGuestNotice, useAdminRole } from "@/lib/admin-role";
 
-type Phase = "idle" | "login" | "begin" | "count" | "chunk" | "done" | "error";
+type Phase =
+  | "idle"
+  | "login"
+  | "begin"
+  | "count"
+  | "chunk"
+  | "downloading"
+  | "done"
+  | "error";
 type SyncDirection = "local-to-prod" | "prod-to-local";
+type PendingAction = "sync" | "download";
 
 interface SyncState {
   phase: Phase;
@@ -24,22 +33,17 @@ const INITIAL: SyncState = {
   error: "",
 };
 
-const TABLES: { key: "users" | "sites"; label: string; desc: string }[] = [
-  {
-    key: "users",
-    label: "loa_users (캐릭터)",
-    desc: "선택한 방향 기준으로 전체 데이터를 다시 동기화합니다.",
-  },
-  {
-    key: "sites",
-    label: "loa_sites (사이트 모음)",
-    desc: "선택한 방향 기준으로 전체 데이터를 다시 동기화합니다.",
-  },
+const TABLES: { key: "users" | "sites"; label: string }[] = [
+  { key: "users", label: "loa_users (캐릭터)" },
+  { key: "sites", label: "loa_sites (사이트 모음)" },
 ];
 
 export default function SyncPage() {
   const [showForm, setShowForm] = useState(false);
-  const [activeTable, setActiveTable] = useState<"users" | "sites" | null>(null);
+  const [activeTable, setActiveTable] = useState<"users" | "sites" | null>(
+    null,
+  );
+  const [pendingAction, setPendingAction] = useState<PendingAction>("sync");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -58,11 +62,8 @@ export default function SyncPage() {
     setDirection(isLocalHost ? "local-to-prod" : "prod-to-local");
   }, []);
 
-  const running =
-    state.phase !== "idle" && state.phase !== "done" && state.phase !== "error";
-
-  const directionLabel =
-    direction === "local-to-prod" ? "프로덕션으로 동기화" : "로컬과 동기화";
+  const busy = !["idle", "done", "error"].includes(state.phase);
+  const running = busy && state.phase !== "downloading";
 
   function requireMaster(action: string) {
     if (!isGuest) return true;
@@ -73,15 +74,26 @@ export default function SyncPage() {
   const handleSyncClick = (tableKey: "users" | "sites") => {
     if (!requireMaster("DB 동기화")) return;
     const table = TABLES.find((item) => item.key === tableKey);
-    const actionText =
-      direction === "local-to-prod"
-        ? "프로덕션 테이블을 비우고 로컬 데이터를 복사합니다."
-        : "로컬 테이블을 비우고 프로덕션 데이터를 복사합니다.";
     const ok = window.confirm(
-      `[${table?.label ?? tableKey}] (${directionLabel})\n\n${actionText}\n계속하시겠습니까?`,
+      `[${table?.label ?? tableKey}] (local → production)\n\n프로덕션 테이블을 비우고 로컬 데이터를 복사합니다.\n계속하시겠습니까?`,
     );
     if (!ok) return;
 
+    setPendingAction("sync");
+    setActiveTable(tableKey);
+    setError("");
+    setShowForm(true);
+  };
+
+  const handleDownloadClick = (tableKey: "users" | "sites") => {
+    if (!requireMaster("DB 다운로드")) return;
+    const table = TABLES.find((item) => item.key === tableKey);
+    const ok = window.confirm(
+      `[${table?.label ?? tableKey}] (production → 다운로드)\n\nproduction 데이터를 JSON 파일로 다운로드합니다.\n계속하시겠습니까?`,
+    );
+    if (!ok) return;
+
+    setPendingAction("download");
     setActiveTable(tableKey);
     setError("");
     setShowForm(true);
@@ -93,14 +105,14 @@ export default function SyncPage() {
     setState({
       ...INITIAL,
       phase: "login",
-      message: `${directionLabel} 준비 중...`,
+      message: "local → production 준비 중...",
     });
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
     try {
       const res = await fetch(
-        `/api/admin/sync/${activeTable}?sessionId=${encodeURIComponent(sessionId)}&direction=${encodeURIComponent(direction)}`,
+        `/api/admin/sync/${activeTable}?sessionId=${encodeURIComponent(sessionId)}&direction=local-to-prod`,
         {
           method: "GET",
           signal: ctrl.signal,
@@ -143,6 +155,45 @@ export default function SyncPage() {
     }
   }
 
+  async function downloadExport(sessionId: string) {
+    if (!activeTable) return;
+
+    setState({ ...INITIAL, phase: "downloading", message: "다운로드 중..." });
+    try {
+      const res = await fetch(
+        `/api/admin/sync/${activeTable}/export?sessionId=${encodeURIComponent(sessionId)}`,
+      );
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(`다운로드 실패 (${res.status}): ${txt}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${activeTable}-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setState({
+        phase: "done",
+        total: 0,
+        transferred: 0,
+        percent: 100,
+        message: "다운로드 완료",
+        error: "",
+      });
+    } catch (err) {
+      setState((s) => ({
+        ...s,
+        phase: "error",
+        error:
+          err instanceof Error
+            ? err.message
+            : "다운로드 중 오류가 발생했습니다.",
+      }));
+    }
+  }
+
   function cancel() {
     abortRef.current?.abort();
     setState((s) => ({ ...s, phase: "error", error: "사용자가 취소했습니다." }));
@@ -173,7 +224,11 @@ export default function SyncPage() {
       }
 
       setShowForm(false);
-      await start(data.sessionId);
+      if (pendingAction === "download") {
+        await downloadExport(data.sessionId);
+      } else {
+        await start(data.sessionId);
+      }
     } catch (err) {
       setError(
         err instanceof Error
@@ -194,10 +249,17 @@ export default function SyncPage() {
     <div>
       <div className="space-y-6">
         <header>
-          <h1 className="text-2xl font-bold">서버 동기화</h1>
+          <h1 className="text-2xl font-bold">동기화</h1>
           <p className="mt-2 text-sm text-gray-400">
-            동기화 방향을 선택한 뒤 실행합니다. 대상 테이블은{" "}
-            <strong className="text-red-400">TRUNCATE</strong> 후 전체 복사됩니다.
+            {direction === "local-to-prod" ? (
+              <>
+                동기화 방향을 선택한 뒤 실행합니다. 대상 테이블은{" "}
+                <strong className="text-red-400">TRUNCATE</strong> 후 전체
+                복사됩니다.
+              </>
+            ) : (
+              "production 데이터를 JSON 파일로 다운로드합니다."
+            )}
           </p>
           {accessNotice && (
             <pre className="mt-3 whitespace-pre-wrap rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -209,7 +271,7 @@ export default function SyncPage() {
         <div className="flex gap-2 text-sm">
           <button
             type="button"
-            disabled={running}
+            disabled={busy}
             onClick={() => setDirection("local-to-prod")}
             className={`rounded px-3 py-2 ${
               direction === "local-to-prod"
@@ -217,11 +279,11 @@ export default function SyncPage() {
                 : "bg-gray-800 text-gray-300"
             }`}
           >
-            프로덕션으로 동기화
+            local → production
           </button>
           <button
             type="button"
-            disabled={running}
+            disabled={busy}
             onClick={() => setDirection("prod-to-local")}
             className={`rounded px-3 py-2 ${
               direction === "prod-to-local"
@@ -229,7 +291,7 @@ export default function SyncPage() {
                 : "bg-gray-800 text-gray-300"
             }`}
           >
-            로컬과 동기화
+            production → 다운로드
           </button>
         </div>
 
@@ -241,8 +303,14 @@ export default function SyncPage() {
                 className="rounded-xl border border-gray-700 bg-gray-900 p-5"
                 key={t.key}
               >
-                <h2 className="text-lg font-semibold text-gray-100">{t.label}</h2>
-                <p className="mt-1 text-xs text-gray-400">{t.desc}</p>
+                <h2 className="text-lg font-semibold text-gray-100">
+                  {t.label}
+                </h2>
+                <p className="mt-1 text-xs text-gray-400">
+                  {direction === "local-to-prod"
+                    ? "로컬 데이터를 프로덕션으로 동기화합니다."
+                    : "프로덕션 데이터를 JSON 파일로 다운로드합니다."}
+                </p>
 
                 <div className="mt-4 space-y-2">
                   <div className="flex justify-between text-xs text-gray-300">
@@ -281,7 +349,10 @@ export default function SyncPage() {
                       {phaseLabel(tableState.phase)}
                     </span>
                     {tableState.message && (
-                      <span className="text-gray-500"> · {tableState.message}</span>
+                      <span className="text-gray-500">
+                        {" "}
+                        · {tableState.message}
+                      </span>
                     )}
                   </div>
                   {tableState.error && (
@@ -292,15 +363,30 @@ export default function SyncPage() {
                 </div>
 
                 <div className="mt-4 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleSyncClick(t.key)}
-                    disabled={running}
-                    className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-700"
-                  >
-                    {running ? "동기화 중..." : "서버와 동기화"}
-                  </button>
-                  {running && (
+                  {direction === "prod-to-local" ? (
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadClick(t.key)}
+                      disabled={busy}
+                      className="rounded bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600 disabled:cursor-not-allowed disabled:bg-gray-700"
+                    >
+                      {activeTable === t.key && state.phase === "downloading"
+                        ? "다운로드 중..."
+                        : "다운로드"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleSyncClick(t.key)}
+                      disabled={busy}
+                      className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-700"
+                    >
+                      {activeTable === t.key && running
+                        ? "동기화 중..."
+                        : "동기화"}
+                    </button>
+                  )}
+                  {activeTable === t.key && running && (
                     <button
                       type="button"
                       onClick={cancel}
@@ -356,7 +442,11 @@ export default function SyncPage() {
                     disabled={loading}
                     className="admin-btn admin-btn-primary flex-1"
                   >
-                    {loading ? "확인 중..." : "인증 후 동기화"}
+                    {loading
+                      ? "확인 중..."
+                      : pendingAction === "download"
+                        ? "인증 후 다운로드"
+                        : "인증 후 동기화"}
                   </button>
                 </div>
               </form>
@@ -380,6 +470,8 @@ function phaseLabel(p: Phase): string {
       return "건수 조회";
     case "chunk":
       return "전송 중";
+    case "downloading":
+      return "다운로드 중";
     case "done":
       return "완료";
     case "error":
@@ -412,14 +504,16 @@ function handleEvent(
     if (evt === "progress") {
       if (typeof data.phase === "string") next.phase = data.phase as Phase;
       if (typeof data.total === "number") next.total = data.total;
-      if (typeof data.transferred === "number") next.transferred = data.transferred;
+      if (typeof data.transferred === "number")
+        next.transferred = data.transferred;
       if (typeof data.percent === "number") next.percent = data.percent;
       if (typeof data.message === "string") next.message = data.message;
     } else if (evt === "done") {
       next.phase = "done";
       next.percent = 100;
       if (typeof data.total === "number") next.total = data.total;
-      if (typeof data.transferred === "number") next.transferred = data.transferred;
+      if (typeof data.transferred === "number")
+        next.transferred = data.transferred;
       next.message = "동기화 완료";
     } else if (evt === "error") {
       next.phase = "error";

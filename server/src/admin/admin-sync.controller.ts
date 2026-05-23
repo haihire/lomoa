@@ -2,9 +2,9 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
-  Inject,
   MessageEvent,
   Param,
   Post,
@@ -13,12 +13,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { RowDataPacket, ResultSetHeader } from 'mysql2';
-import type { Pool } from 'mysql2/promise';
 import { Observable } from 'rxjs';
 import { AdminAuthService } from './admin-auth.service';
 import { AdminWriteGuard, RequireOwner } from './admin.guard';
-import { DB_POOL } from '../db/db.module';
+import { AdminSyncRepository } from './repositories/admin-sync.repository';
 
 type TableKey = 'users' | 'sites';
 type SyncDirection = 'local-to-prod' | 'prod-to-local';
@@ -27,6 +25,24 @@ interface TableSpec {
   table: string;
   columns: readonly string[];
 }
+
+interface PrereqSpec extends TableSpec {
+  pkColumn: string;
+}
+
+// loa_users FK 의존 테이블 - 데이터 없으면 먼저 복사, 있으면 스킵
+const PREREQ_SPECS: PrereqSpec[] = [
+  {
+    table: 'loa_class',
+    columns: ['idx', 'class_engraving', 'class_root', 'gender', 'class_detail'],
+    pkColumn: 'idx',
+  },
+  {
+    table: 'loa_ark_grid',
+    columns: ['seq', 'core', 'star', 'class', 'order'],
+    pkColumn: 'seq',
+  },
+];
 
 const TABLE_SPECS: Record<TableKey, TableSpec> = {
   users: {
@@ -70,11 +86,24 @@ const SYNC_CHUNK_SIZE = 25;
 const SYNC_MAX_PAYLOAD_BYTES = 32 * 1024;
 const SYNC_CHUNK_DELAY_MS = 1000;
 
+// count/chunk 엔드포인트는 prereq 테이블도 허용
+const ALL_SPECS: Record<string, TableSpec> = {
+  ...TABLE_SPECS,
+  ...Object.fromEntries(PREREQ_SPECS.map((s) => [s.table, s])),
+};
+
 function specOrThrow(table: string): TableSpec {
   if (!(table in TABLE_SPECS)) {
     throw new BadRequestException(`unsupported table: ${table}`);
   }
   return TABLE_SPECS[table as TableKey];
+}
+
+function anySpecOrThrow(table: string): TableSpec {
+  if (!(table in ALL_SPECS)) {
+    throw new BadRequestException(`unsupported table: ${table}`);
+  }
+  return ALL_SPECS[table];
 }
 
 function seqIndexOrThrow(spec: TableSpec): number {
@@ -95,24 +124,27 @@ function directionOrThrow(direction: string): SyncDirection {
 @Controller('api/admin/sync')
 export class AdminSyncController {
   constructor(
-    @Inject(DB_POOL) private readonly pool: Pool,
+    private readonly adminSyncRepo: AdminSyncRepository,
     private readonly config: ConfigService,
     private readonly authService: AdminAuthService,
   ) {}
+
+  @Get(':table/export')
+  @UseGuards(AdminWriteGuard)
+  @RequireOwner()
+  async exportTable(@Param('table') table: string) {
+    const spec = specOrThrow(table);
+    const rows = await this.adminSyncRepo.readAll(spec, 'seq');
+    const values = rows.map((r) => spec.columns.map((c) => normalize(r[c])));
+    return { table: spec.table, columns: [...spec.columns], rows: values };
+  }
 
   @Post(':table/begin')
   @UseGuards(AdminWriteGuard)
   @RequireOwner()
   async begin(@Param('table') table: string) {
     const spec = specOrThrow(table);
-    const conn = await this.pool.getConnection();
-    try {
-      await conn.query('SET FOREIGN_KEY_CHECKS=0');
-      await conn.query(`TRUNCATE TABLE \`${spec.table}\``);
-      await conn.query('SET FOREIGN_KEY_CHECKS=1');
-    } finally {
-      conn.release();
-    }
+    await this.adminSyncRepo.truncate(spec.table);
     return { ok: true, table: spec.table };
   }
 
@@ -123,7 +155,7 @@ export class AdminSyncController {
     @Param('table') table: string,
     @Body() body: { rows?: unknown[][] },
   ) {
-    const spec = specOrThrow(table);
+    const spec = anySpecOrThrow(table);
     const rows = body?.rows;
     if (!Array.isArray(rows) || rows.length === 0) {
       return { inserted: 0 };
@@ -137,30 +169,16 @@ export class AdminSyncController {
       }
     }
 
-    const colList = spec.columns.map((c) => `\`${c}\``).join(', ');
-    const conn = await this.pool.getConnection();
-    try {
-      await conn.query('SET FOREIGN_KEY_CHECKS=0');
-      const [result] = await conn.query<ResultSetHeader>(
-        `INSERT INTO \`${spec.table}\` (${colList}) VALUES ?`,
-        [rows],
-      );
-      await conn.query('SET FOREIGN_KEY_CHECKS=1');
-      return { inserted: result.affectedRows };
-    } finally {
-      conn.release();
-    }
+    const inserted = await this.adminSyncRepo.insertRows(spec, rows);
+    return { inserted };
   }
 
   @Post(':table/count')
   @UseGuards(AdminWriteGuard)
   @RequireOwner()
   async count(@Param('table') table: string) {
-    const spec = specOrThrow(table);
-    const [rows] = await this.pool.query<RowDataPacket[]>(
-      `SELECT COUNT(*) AS total FROM \`${spec.table}\``,
-    );
-    return { total: Number(rows[0]?.total ?? 0) };
+    const spec = anySpecOrThrow(table);
+    return { total: await this.adminSyncRepo.count(spec.table) };
   }
 
   @Post(':table/chunk-read')
@@ -177,11 +195,10 @@ export class AdminSyncController {
     const safeAfterSeq = Number.isFinite(afterSeq) ? afterSeq : 0;
     const safeLimitInput = Number.isFinite(limit) ? limit : SYNC_CHUNK_SIZE;
     const safeLimit = Math.max(1, Math.min(SYNC_CHUNK_SIZE, safeLimitInput));
-    const colList = spec.columns.map((c) => `\`${c}\``).join(', ');
-
-    const [rows] = await this.pool.query<RowDataPacket[]>(
-      `SELECT ${colList} FROM \`${spec.table}\` WHERE seq > ? ORDER BY seq ASC LIMIT ?`,
-      [safeAfterSeq, safeLimit],
+    const rows = await this.adminSyncRepo.readChunk(
+      spec,
+      safeAfterSeq,
+      safeLimit,
     );
     const values = rows.map((r) => spec.columns.map((c) => normalize(r[c])));
     const lastRow = rows[rows.length - 1];
@@ -254,6 +271,58 @@ export class AdminSyncController {
             percent: 0,
           });
 
+          // users 동기화 시 FK 의존 테이블(loa_class, loa_ark_grid) 먼저 처리
+          if (table === 'users' && syncDirection === 'local-to-prod') {
+            for (const prereq of PREREQ_SPECS) {
+              const countRes = await callTargetRaw(
+                targetUrl,
+                `/api/admin/sync/${prereq.table}/count`,
+                remoteToken,
+                {},
+              );
+              const remoteCount = Number(
+                (countRes as { total?: number })?.total ?? 0,
+              );
+
+              if (remoteCount > 0) {
+                emit('progress', {
+                  phase: 'begin',
+                  message: `${prereq.table} 이미 존재 (${remoteCount}행) — 스킵`,
+                  percent: 0,
+                });
+                continue;
+              }
+
+              emit('progress', {
+                phase: 'begin',
+                message: `${prereq.table} 복사 중...`,
+                percent: 0,
+              });
+
+              const prereqRows = await this.adminSyncRepo.readAll(
+                prereq,
+                prereq.pkColumn,
+              );
+              const prereqValues = prereqRows.map((r) =>
+                prereq.columns.map((c) => normalize(r[c])),
+              );
+              for (const chunk of splitRowsByPayloadSize(prereqValues)) {
+                await callTargetRaw(
+                  targetUrl,
+                  `/api/admin/sync/${prereq.table}/chunk`,
+                  remoteToken,
+                  { rows: chunk },
+                );
+              }
+
+              emit('progress', {
+                phase: 'begin',
+                message: `${prereq.table} ${prereqRows.length}행 복사 완료`,
+                percent: 0,
+              });
+            }
+          }
+
           emit('progress', {
             phase: 'begin',
             message: `${spec.table} ${targetLabel} TRUNCATE`,
@@ -267,7 +336,7 @@ export class AdminSyncController {
             {},
           );
 
-          const total = await readLocalCount(this.pool, spec.table);
+          const total = await this.adminSyncRepo.count(spec.table);
 
           emit('progress', {
             phase: 'count',
@@ -286,11 +355,13 @@ export class AdminSyncController {
           let lastSeq = 0;
 
           while (!cancelled) {
-            const values = await readLocalChunk(
-              this.pool,
+            const rows = await this.adminSyncRepo.readChunk(
               spec,
               lastSeq,
               SYNC_CHUNK_SIZE,
+            );
+            const values = rows.map((row) =>
+              spec.columns.map((column) => normalize(row[column])),
             );
 
             if (values.length === 0) break;
@@ -354,27 +425,6 @@ export class AdminSyncController {
       };
     });
   }
-}
-
-async function readLocalCount(pool: Pool, table: string): Promise<number> {
-  const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT COUNT(*) AS total FROM \`${table}\``,
-  );
-  return Number(rows[0]?.total ?? 0);
-}
-
-async function readLocalChunk(
-  pool: Pool,
-  spec: TableSpec,
-  lastSeq: number,
-  limit: number,
-): Promise<unknown[][]> {
-  const colList = spec.columns.map((c) => `\`${c}\``).join(', ');
-  const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT ${colList} FROM \`${spec.table}\` WHERE seq > ? ORDER BY seq ASC LIMIT ?`,
-    [lastSeq, limit],
-  );
-  return rows.map((r) => spec.columns.map((c) => normalize(r[c])));
 }
 
 function normalize(v: unknown): unknown {

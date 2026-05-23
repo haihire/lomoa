@@ -10,6 +10,10 @@ import { StreamersModule } from '../streamers/streamers.module';
 import { SitesModule } from '../sites/sites.module';
 import { AdminMonitoringController } from './admin-monitoring.controller';
 import { AdminMonitoringService } from './admin-monitoring.service';
+import { MonitoringRepository } from './repositories/monitoring.repository';
+import { AdminAuthRepository } from './repositories/admin-auth.repository';
+import { AdminCharactersRepository } from './repositories/admin-characters.repository';
+import { AdminSyncRepository } from './repositories/admin-sync.repository';
 
 @Module({
   imports: [StreamersModule, SitesModule],
@@ -26,6 +30,10 @@ import { AdminMonitoringService } from './admin-monitoring.service';
     AdminGuard,
     AdminWriteGuard,
     AdminMonitoringService,
+    MonitoringRepository,
+    AdminAuthRepository,
+    AdminCharactersRepository,
+    AdminSyncRepository,
   ],
   exports: [AdminAuthService],
 })

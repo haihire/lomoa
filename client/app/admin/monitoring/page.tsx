@@ -104,55 +104,72 @@ export default function MonitoringPage() {
     let alive = true;
     async function load(initial = false) {
       if (initial) setLoading(true);
-      const [dashboardRes, currentRes] = await Promise.all([
-        fetch("/api/admin/monitoring/dashboard?days=7", { cache: "no-store" }),
-        fetch("/api/admin/monitoring/system/current", { cache: "no-store" }),
-      ]);
-      if (!alive) return;
+      try {
+        const [dashboardRes, currentRes] = await Promise.all([
+          fetch("/api/admin/monitoring/dashboard?days=7", { cache: "no-store" }),
+          fetch("/api/admin/monitoring/system/current", { cache: "no-store" }),
+        ]);
+        if (!alive) return;
 
-      const dashboard = dashboardRes.ok ? ((await dashboardRes.json()) as Dashboard) : null;
-      const current = currentRes.ok ? ((await currentRes.json()) as Dashboard["summary"]["latestSystem"]) : null;
-
-      setData((prev) => {
-        const base = dashboard ?? prev;
-        const livePoint = current
-          ? {
-              at: current.created_at,
-              cpuPercent: current.cpu_percent,
-              memoryPercent: current.memory_percent,
-              rssMb: current.rss_mb,
-              heapUsedMb: current.heap_used_mb,
-              totalMemMb: current.total_mem_mb,
-            }
+        const dashboard = dashboardRes.ok
+          ? ((await dashboardRes.json()) as Dashboard)
           : null;
-        const now = Date.now();
-        const mergedSystemSeries = [...(base.systemSeries ?? []), ...(livePoint ? [livePoint] : [])]
-          .filter((item) => {
-            const at = new Date(item.at).getTime();
-            return Number.isFinite(at) && now - at <= LIVE_WINDOW_MS;
-          })
-          .reduce<Dashboard["systemSeries"]>((acc, item) => {
-            if (acc.length === 0 || acc[acc.length - 1].at !== item.at) acc.push(item);
-            return acc;
-          }, []);
+        const current = currentRes.ok
+          ? ((await currentRes.json()) as Dashboard["summary"]["latestSystem"])
+          : null;
 
-        const nextVisitCount = base.summary.pageVisits ?? 0;
-        const prevVisitCount = prevVisitCountRef.current;
-        if (prevVisitCount > 0 && nextVisitCount > prevVisitCount) {
-          setLiveVisitDelta(nextVisitCount - prevVisitCount);
-          window.setTimeout(() => setLiveVisitDelta(0), 2500);
-        }
-        prevVisitCountRef.current = nextVisitCount;
+        setData((prev) => {
+          const base = dashboard ?? prev;
+          const livePoint = current
+            ? {
+                at: current.created_at,
+                cpuPercent: current.cpu_percent,
+                memoryPercent: current.memory_percent,
+                rssMb: current.rss_mb,
+                heapUsedMb: current.heap_used_mb,
+                totalMemMb: current.total_mem_mb,
+              }
+            : null;
+          const now = Date.now();
+          const mergedSystemSeries = [
+            ...(base.systemSeries ?? []),
+            ...(livePoint ? [livePoint] : []),
+          ]
+            .filter((item) => {
+              const at = new Date(item.at).getTime();
+              return Number.isFinite(at) && now - at <= LIVE_WINDOW_MS;
+            })
+            .reduce<Dashboard["systemSeries"]>((acc, item) => {
+              if (acc.length === 0 || acc[acc.length - 1].at !== item.at) acc.push(item);
+              return acc;
+            }, []);
 
-        return {
-          ...base,
-          sectionSeries: prev.sectionSeries,
-          systemSeries: mergedSystemSeries.length > 0 ? mergedSystemSeries : prev.systemSeries,
-          summary: { ...base.summary, latestSystem: current ?? base.summary.latestSystem ?? prev.summary.latestSystem },
-        };
-      });
-      hasLoadedRef.current = true;
-      if (initial) setLoading(false);
+          const nextVisitCount = base.summary.pageVisits ?? 0;
+          const prevVisitCount = prevVisitCountRef.current;
+          if (prevVisitCount > 0 && nextVisitCount > prevVisitCount) {
+            setLiveVisitDelta(nextVisitCount - prevVisitCount);
+            window.setTimeout(() => setLiveVisitDelta(0), 2500);
+          }
+          prevVisitCountRef.current = nextVisitCount;
+
+          return {
+            ...base,
+            sectionSeries: prev.sectionSeries,
+            systemSeries:
+              mergedSystemSeries.length > 0 ? mergedSystemSeries : prev.systemSeries,
+            summary: {
+              ...base.summary,
+              latestSystem:
+                current ?? base.summary.latestSystem ?? prev.summary.latestSystem,
+            },
+          };
+        });
+        hasLoadedRef.current = true;
+      } catch {
+        // Keep previous dashboard snapshot if polling fails.
+      } finally {
+        if (initial) setLoading(false);
+      }
     }
 
     void load(true);
@@ -166,10 +183,19 @@ export default function MonitoringPage() {
   useEffect(() => {
     let alive = true;
     async function loadSectionOnly() {
-      const res = await fetch(`/api/admin/monitoring/dashboard?days=${rangeDays}`, { cache: "no-store" });
-      if (!alive || !res.ok) return;
-      const dashboard = (await res.json()) as Dashboard;
-      setData((prev) => ({ ...prev, sectionSeries: dashboard.sectionSeries ?? prev.sectionSeries }));
+      try {
+        const res = await fetch(`/api/admin/monitoring/dashboard?days=${rangeDays}`, {
+          cache: "no-store",
+        });
+        if (!alive || !res.ok) return;
+        const dashboard = (await res.json()) as Dashboard;
+        setData((prev) => ({
+          ...prev,
+          sectionSeries: dashboard.sectionSeries ?? prev.sectionSeries,
+        }));
+      } catch {
+        // Keep existing section series if fetch fails.
+      }
     }
     void loadSectionOnly();
     return () => {
@@ -265,13 +291,21 @@ export default function MonitoringPage() {
         <p className="admin-page-subtitle mt-1">운영 상태와 추세를 빠르게 확인합니다.</p>
       </div>
 
+      {loading && (
+        <div className="admin-loading-box admin-loading-box-compact mb-4 shrink-0">
+          <p className="text-sm text-[color:var(--admin-text-muted)]">
+            모니터링 지표를 불러오는 중입니다...
+          </p>
+        </div>
+      )}
+
       <div className="mb-4 grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="admin-stat-card">
           <p className="admin-stat-label">평균 응답</p>
           <p className="admin-stat-value mt-1">{data.summary.avgDurationMs}ms</p>
         </div>
         <div className="admin-stat-card">
-          <p className="admin-stat-label">페이지 방문(24h)</p>
+          <p className="admin-stat-label">페이지 방문(누적)</p>
           <p className="admin-stat-value mt-1">{data.summary.pageVisits.toLocaleString()}</p>
         </div>
         <div className="admin-stat-card">

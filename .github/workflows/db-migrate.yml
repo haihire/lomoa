@@ -1,17 +1,17 @@
 name: DB Migrate
 
-# 수동 트리거 전용: EC2 daloa-mysql 컨테이너에 마이그레이션 SQL 실행 + NestJS 재기동
-# 사용법: gh workflow run db-migrate.yml -f sql_file=scripts/migrate-youtube-snapshots.sql [-f restart_nest=true]
+# Manual trigger only: run migration SQL in EC2 daloa-postgres container and optionally restart NestJS.
+# Usage: gh workflow run db-migrate.yml -f sql_file=scripts/migrate-youtube-snapshots.sql [-f restart_nest=true]
 
 on:
   workflow_dispatch:
     inputs:
       sql_file:
-        description: "리포지토리 루트 기준 SQL 파일 경로 (예: scripts/migrate-youtube-snapshots.sql)"
+        description: "Repository-root SQL file path (e.g. scripts/migrate-youtube-snapshots.sql)"
         required: true
         default: "scripts/migrate-youtube-snapshots.sql"
       restart_nest:
-        description: "마이그레이션 후 NestJS 컨테이너 재시작 여부"
+        description: "Whether to restart the NestJS container after migration"
         required: false
         default: "true"
 
@@ -38,19 +38,19 @@ jobs:
         run: |
           set -e
 
-          # 원격에서 실행할 셸 스크립트
+          # Script to run on the remote EC2 host.
           remote_script="cd /home/ubuntu/daloa \
             && git pull origin main \
             && test -f \"$SQL_FILE\" \
             && set -a && source .env && set +a \
-            && docker exec -i daloa-mysql mysql -uroot -p\"\$DB_ROOT_PASS\" --default-character-set=utf8mb4 \"\$DB_NAME\" < \"$SQL_FILE\" \
+            && docker exec -i daloa-postgres psql -U \"\$DB_USER\" -d \"\$DB_NAME\" -f \"$SQL_FILE\" \
             && echo MIGRATION_OK"
 
           if [ "$RESTART_NEST" = "true" ]; then
             remote_script="$remote_script && docker compose restart nest && echo NEST_RESTARTED"
           fi
 
-          # JSON 안전하게 만들기 위해 base64 인코딩 후 원격에서 디코딩
+          # Encode safely for JSON transport.
           encoded=$(printf '%s' "$remote_script" | base64 -w0)
 
           command_id=$(aws ssm send-command \

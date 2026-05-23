@@ -1,10 +1,10 @@
 # DB 스키마
 
-**DB 이름**: `lost_ark`  
-**DB 엔진**: MariaDB 10.6  
-**Charset**: `utf8mb4`, `utf8mb4_general_ci`
+**DB 엔진**: PostgreSQL 16  
+**ORM**: Prisma 7 (`@prisma/adapter-pg` driver adapter)  
+**스키마 파일**: `server/prisma/schema.prisma`
 
-> 변경 시 `docs/기획.md`와 이 파일을 동시에 업데이트한다.
+> 변경 시 이 파일도 동시에 업데이트한다.
 
 ---
 
@@ -36,9 +36,9 @@
 
 ```sql
 -- 각인명 있을 때
-SELECT idx FROM loa_class WHERE class_detail = ? AND class_engraving = ? LIMIT 1;
+SELECT idx FROM loa_class WHERE class_detail = $1 AND class_engraving = $2 LIMIT 1;
 -- fallback: 직업명만
-SELECT idx FROM loa_class WHERE class_detail = ? LIMIT 1;
+SELECT idx FROM loa_class WHERE class_detail = $1 LIMIT 1;
 ```
 
 ---

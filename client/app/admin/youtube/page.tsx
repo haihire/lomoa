@@ -357,8 +357,10 @@ export default function AdminYoutubePage() {
         <div className="admin-card flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
           <div className="flex-1 overflow-y-auto">
             {loading ? (
-              <div className="text-sm text-[color:var(--admin-text-muted)] py-12 text-center">
-                불러오는 중...
+              <div className="admin-loading-box m-4">
+                <p className="text-sm text-[color:var(--admin-text-muted)]">
+                  유튜브 목록을 불러오는 중입니다...
+                </p>
               </div>
             ) : filtered.length === 0 ? (
               <div className="text-sm text-[color:var(--admin-text-muted)] py-12 text-center">
@@ -412,8 +414,10 @@ export default function AdminYoutubePage() {
         {/* 우측: 통계 */}
         <div className="w-80 shrink-0 flex flex-col gap-4 overflow-y-auto">
           {loading ? (
-            <div className="admin-card admin-card-padded text-xs text-[color:var(--admin-text-muted)] text-center">
-              로딩 중...
+            <div className="admin-loading-box admin-loading-box-compact">
+              <p className="text-xs text-[color:var(--admin-text-muted)]">
+                통계를 불러오는 중입니다...
+              </p>
             </div>
           ) : (
             <>

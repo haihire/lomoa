@@ -22,7 +22,7 @@ export default function AdminLoginPage() {
         setError(data.message ?? "로그인 실패");
         return;
       }
-      window.location.replace("/admin/sites");
+      window.location.replace("/admin/monitoring");
     } catch {
       setError("네트워크 오류가 발생했습니다");
     } finally {
@@ -35,8 +35,10 @@ export default function AdminLoginPage() {
     await login(username, password);
   }
 
-  async function handleGuestLogin() {
-    await login("guest", "1237");
+  function handleGuestFill() {
+    setUsername("guest");
+    setPassword("1237");
+    setError("");
   }
 
   return (
@@ -82,10 +84,10 @@ export default function AdminLoginPage() {
           <button
             type="button"
             disabled={loading}
-            onClick={handleGuestLogin}
+            onClick={handleGuestFill}
             className="admin-btn admin-btn-secondary w-full"
           >
-            게스트로 둘러보기
+            게스트 아이디 채우기
           </button>
         </form>
       </div>

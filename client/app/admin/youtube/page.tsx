@@ -10,6 +10,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import type { YoutubeVideo } from "@/types";
+import { buildGuestNotice, useAdminRole } from "@/lib/admin-role";
 
 // ===== 유틸 =====
 
@@ -111,6 +112,15 @@ export default function AdminYoutubePage() {
     { date: string; avg: number }[]
   >([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [accessNotice, setAccessNotice] = useState("");
+  const role = useAdminRole();
+  const isGuest = role === "guest";
+
+  function requireMaster(action: string) {
+    if (!isGuest) return true;
+    setAccessNotice(buildGuestNotice(action));
+    return false;
+  }
 
   function cycleView() {
     setViewSort(
@@ -174,6 +184,7 @@ export default function AdminYoutubePage() {
   }, [rangeDay]);
 
   async function handlePurge() {
+    if (!requireMaster("유튜브 캐시 새로고침")) return;
     setPurging(true);
     setPurgeResult("idle");
     const res = await fetch("/api/admin/cache", {
@@ -192,6 +203,7 @@ export default function AdminYoutubePage() {
   >("idle");
 
   async function handleSnapshot() {
+    if (!requireMaster("유튜브 스냅샷 저장")) return;
     setSnapshotting(true);
     setSnapshotResult("idle");
     try {
@@ -275,6 +287,11 @@ export default function AdminYoutubePage() {
               ? `총 ${total}개의 인기 영상이 캐시되어 있습니다.`
               : "캐시된 영상 목록을 확인합니다."}
           </p>
+          {accessNotice && (
+            <pre className="mt-3 whitespace-pre-wrap rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {accessNotice}
+            </pre>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {purgeResult === "done" && (
@@ -340,8 +357,10 @@ export default function AdminYoutubePage() {
         <div className="admin-card flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
           <div className="flex-1 overflow-y-auto">
             {loading ? (
-              <div className="text-sm text-[color:var(--admin-text-muted)] py-12 text-center">
-                불러오는 중...
+              <div className="admin-loading-box m-4">
+                <p className="text-sm text-[color:var(--admin-text-muted)]">
+                  유튜브 목록을 불러오는 중입니다...
+                </p>
               </div>
             ) : filtered.length === 0 ? (
               <div className="text-sm text-[color:var(--admin-text-muted)] py-12 text-center">
@@ -395,8 +414,10 @@ export default function AdminYoutubePage() {
         {/* 우측: 통계 */}
         <div className="w-80 shrink-0 flex flex-col gap-4 overflow-y-auto">
           {loading ? (
-            <div className="admin-card admin-card-padded text-xs text-[color:var(--admin-text-muted)] text-center">
-              로딩 중...
+            <div className="admin-loading-box admin-loading-box-compact">
+              <p className="text-xs text-[color:var(--admin-text-muted)]">
+                통계를 불러오는 중입니다...
+              </p>
             </div>
           ) : (
             <>

@@ -1,31 +1,47 @@
 import {
-  Controller,
-  Post,
-  Param,
-  Body,
-  Sse,
-  Query,
-  UseGuards,
   BadRequestException,
-  Inject,
-  MessageEvent,
+  Body,
+  Controller,
   HttpCode,
   HttpStatus,
+  MessageEvent,
+  Param,
+  Post,
+  Query,
+  Sse,
+  UseGuards,
 } from '@nestjs/common';
-import type { Pool } from 'mysql2/promise';
-import type { RowDataPacket, ResultSetHeader } from 'mysql2';
-import { Observable } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
-import { DB_POOL } from '../db/db.module';
-import { AdminWriteGuard, RequireOwner } from './admin.guard';
+import { Observable } from 'rxjs';
 import { AdminAuthService } from './admin-auth.service';
+import { AdminWriteGuard, RequireOwner } from './admin.guard';
+import { AdminSyncRepository } from './repositories/admin-sync.repository';
 
 type TableKey = 'users' | 'sites';
+type SyncDirection = 'local-to-prod' | 'prod-to-local';
 
 interface TableSpec {
   table: string;
   columns: readonly string[];
 }
+
+interface PrereqSpec extends TableSpec {
+  pkColumn: string;
+}
+
+// loa_users FK 의존 테이블 - 데이터 없으면 먼저 복사, 있으면 스킵
+const PREREQ_SPECS: PrereqSpec[] = [
+  {
+    table: 'loa_class',
+    columns: ['idx', 'class_engraving', 'class_root', 'gender', 'class_detail'],
+    pkColumn: 'idx',
+  },
+  {
+    table: 'loa_ark_grid',
+    columns: ['seq', 'core', 'star', 'class', 'order'],
+    pkColumn: 'seq',
+  },
+];
 
 const TABLE_SPECS: Record<TableKey, TableSpec> = {
   users: {
@@ -65,42 +81,62 @@ const TABLE_SPECS: Record<TableKey, TableSpec> = {
   },
 };
 
-// Keep each JSON payload below the default Nest/Express body limit.
-const SYNC_CHUNK_SIZE = 100;
+const SYNC_CHUNK_SIZE = 25;
+const SYNC_MAX_PAYLOAD_BYTES = 32 * 1024;
+const SYNC_CHUNK_DELAY_MS = 1000;
+
+// count/chunk 엔드포인트는 prereq 테이블도 허용
+const ALL_SPECS: Record<string, TableSpec> = {
+  ...TABLE_SPECS,
+  ...Object.fromEntries(PREREQ_SPECS.map((s) => [s.table, s])),
+};
 
 function specOrThrow(table: string): TableSpec {
   if (!(table in TABLE_SPECS)) {
-    throw new BadRequestException(`지원하지 않는 테이블: ${table}`);
+    throw new BadRequestException(`unsupported table: ${table}`);
   }
   return TABLE_SPECS[table as TableKey];
+}
+
+function anySpecOrThrow(table: string): TableSpec {
+  if (!(table in ALL_SPECS)) {
+    throw new BadRequestException(`unsupported table: ${table}`);
+  }
+  return ALL_SPECS[table];
+}
+
+function seqIndexOrThrow(spec: TableSpec): number {
+  const seqIndex = spec.columns.indexOf('seq');
+  if (seqIndex === -1) {
+    throw new BadRequestException(`seq column not found for ${spec.table}`);
+  }
+  return seqIndex;
+}
+
+function directionOrThrow(direction: string): SyncDirection {
+  if (direction === 'local-to-prod' || direction === 'prod-to-local') {
+    return direction;
+  }
+  throw new BadRequestException(`unsupported direction: ${direction}`);
 }
 
 @Controller('api/admin/sync')
 export class AdminSyncController {
   constructor(
-    @Inject(DB_POOL) private readonly pool: Pool,
+    private readonly adminSyncRepo: AdminSyncRepository,
     private readonly config: ConfigService,
     private readonly authService: AdminAuthService,
   ) {}
 
-  /** target 측: 동기화 시작 - TRUNCATE */
   @Post(':table/begin')
   @UseGuards(AdminWriteGuard)
   @RequireOwner()
   async begin(@Param('table') table: string) {
     const spec = specOrThrow(table);
-    const conn = await this.pool.getConnection();
-    try {
-      await conn.query('SET FOREIGN_KEY_CHECKS=0');
-      await conn.query(`TRUNCATE TABLE \`${spec.table}\``);
-      await conn.query('SET FOREIGN_KEY_CHECKS=1');
-    } finally {
-      conn.release();
-    }
+    await this.adminSyncRepo.truncate(spec.table);
     return { ok: true, table: spec.table };
   }
 
-  /** target 측: 행 청크 bulk INSERT */
   @Post(':table/chunk')
   @UseGuards(AdminWriteGuard)
   @RequireOwner()
@@ -108,57 +144,99 @@ export class AdminSyncController {
     @Param('table') table: string,
     @Body() body: { rows?: unknown[][] },
   ) {
-    const spec = specOrThrow(table);
+    const spec = anySpecOrThrow(table);
     const rows = body?.rows;
     if (!Array.isArray(rows) || rows.length === 0) {
       return { inserted: 0 };
     }
+
     for (const row of rows) {
       if (!Array.isArray(row) || row.length !== spec.columns.length) {
         throw new BadRequestException(
-          `행 길이가 컬럼 수와 다릅니다 (expected=${spec.columns.length})`,
+          `row length mismatch (expected=${spec.columns.length})`,
         );
       }
     }
 
-    const colList = spec.columns.map((c) => `\`${c}\``).join(', ');
-    const conn = await this.pool.getConnection();
-    try {
-      await conn.query('SET FOREIGN_KEY_CHECKS=0');
-      const [result] = await conn.query<ResultSetHeader>(
-        `INSERT INTO \`${spec.table}\` (${colList}) VALUES ?`,
-        [rows],
-      );
-      await conn.query('SET FOREIGN_KEY_CHECKS=1');
-      return { inserted: result.affectedRows };
-    } finally {
-      conn.release();
-    }
+    const inserted = await this.adminSyncRepo.insertRows(spec, rows);
+    return { inserted };
+  }
+
+  @Post(':table/count')
+  @UseGuards(AdminWriteGuard)
+  @RequireOwner()
+  async count(@Param('table') table: string) {
+    const spec = anySpecOrThrow(table);
+    return { total: await this.adminSyncRepo.count(spec.table) };
+  }
+
+  @Post(':table/chunk-read')
+  @UseGuards(AdminWriteGuard)
+  @RequireOwner()
+  async chunkRead(
+    @Param('table') table: string,
+    @Body() body: { afterSeq?: number; limit?: number },
+  ) {
+    const spec = specOrThrow(table);
+    const seqIndex = seqIndexOrThrow(spec);
+    const afterSeq = Number(body?.afterSeq ?? 0);
+    const limit = Number(body?.limit ?? SYNC_CHUNK_SIZE);
+    const safeAfterSeq = Number.isFinite(afterSeq) ? afterSeq : 0;
+    const safeLimitInput = Number.isFinite(limit) ? limit : SYNC_CHUNK_SIZE;
+    const safeLimit = Math.max(1, Math.min(SYNC_CHUNK_SIZE, safeLimitInput));
+    const rows = await this.adminSyncRepo.readChunk(
+      spec,
+      safeAfterSeq,
+      safeLimit,
+    );
+    const values = rows.map((r) => spec.columns.map((c) => normalize(r[c])));
+    const lastRow = rows[rows.length - 1];
+    const seqColumn = spec.columns[seqIndex];
+    const lastSeq =
+      rows.length > 0 ? Number(lastRow[seqColumn] ?? afterSeq) : afterSeq;
+    return { rows: values, lastSeq };
   }
 
   @Post('check')
   @HttpCode(HttpStatus.OK)
-  async sync_login_check(
-    @Body() body: { username?: string; password?: string },
-  ) {
+  async syncLoginCheck(@Body() body: { username?: string; password?: string }) {
     if (!body.username || !body.password) {
-      throw new BadRequestException('username과 password는 필수입니다');
+      throw new BadRequestException('username/password required');
     }
     return this.authService.login(body.username, body.password);
   }
 
-  /** source/orchestrator 측: 로컬 DB → 원격 target API로 SSE 진행률 스트림 */
   @Sse(':table/run')
+  @UseGuards(AdminWriteGuard)
+  @RequireOwner()
   run(
     @Param('table') table: string,
     @Query('sessionId') sessionId?: string,
+    @Query('direction') direction?: string,
   ): Observable<MessageEvent> {
     const spec = specOrThrow(table);
+    const seqIndex = seqIndexOrThrow(spec);
+    const syncDirection = directionOrThrow(direction?.trim() ?? '');
     const targetUrl = this.config.get<string>('SYNC_TARGET_API_URL', '').trim();
     const remoteToken = sessionId?.trim() ?? '';
+    const isLocalRuntime =
+      this.config.get<string>('NODE_ENV', '').trim() !== 'production';
+
+    if (syncDirection === 'local-to-prod' && !isLocalRuntime) {
+      throw new BadRequestException(
+        'local-to-prod is allowed only on local runtime',
+      );
+    }
+    if (syncDirection === 'prod-to-local' && isLocalRuntime) {
+      throw new BadRequestException(
+        'prod-to-local is allowed only on production runtime',
+      );
+    }
 
     return new Observable<MessageEvent>((subscriber) => {
       let cancelled = false;
+      const targetLabel =
+        syncDirection === 'local-to-prod' ? 'production' : 'local';
 
       const emit = (
         type: 'progress' | 'done' | 'error',
@@ -170,28 +248,76 @@ export class AdminSyncController {
       void (async () => {
         try {
           if (!targetUrl) {
-            throw new Error(
-              'SYNC_TARGET_API_URL 환경변수가 설정되지 않았습니다',
-            );
+            throw new Error('SYNC_TARGET_API_URL is required');
           }
           if (!remoteToken) {
-            throw new Error('원격 관리자 세션이 없습니다');
+            throw new Error('remote admin session is required');
           }
 
-          // run은 로컬 DB를 읽는 orchestrator입니다.
-          // 원격 세션은 Next의 sync/check가 EC2에서 발급받아 전달합니다.
           emit('progress', {
             phase: 'login',
-            message: '원격 관리자 세션 확인 중',
+            message: 'validating remote session',
             percent: 0,
           });
 
-          // 1) target 측 begin (TRUNCATE)
+          // users 동기화 시 FK 의존 테이블(loa_class, loa_ark_grid) 먼저 처리
+          if (table === 'users' && syncDirection === 'local-to-prod') {
+            for (const prereq of PREREQ_SPECS) {
+              const countRes = await callTargetRaw(
+                targetUrl,
+                `/api/admin/sync/${prereq.table}/count`,
+                remoteToken,
+                {},
+              );
+              const remoteCount = Number(
+                (countRes as { total?: number })?.total ?? 0,
+              );
+
+              if (remoteCount > 0) {
+                emit('progress', {
+                  phase: 'begin',
+                  message: `${prereq.table} 이미 존재 (${remoteCount}행) — 스킵`,
+                  percent: 0,
+                });
+                continue;
+              }
+
+              emit('progress', {
+                phase: 'begin',
+                message: `${prereq.table} 복사 중...`,
+                percent: 0,
+              });
+
+              const prereqRows = await this.adminSyncRepo.readAll(
+                prereq,
+                prereq.pkColumn,
+              );
+              const prereqValues = prereqRows.map((r) =>
+                prereq.columns.map((c) => normalize(r[c])),
+              );
+              for (const chunk of splitRowsByPayloadSize(prereqValues)) {
+                await callTargetRaw(
+                  targetUrl,
+                  `/api/admin/sync/${prereq.table}/chunk`,
+                  remoteToken,
+                  { rows: chunk },
+                );
+              }
+
+              emit('progress', {
+                phase: 'begin',
+                message: `${prereq.table} ${prereqRows.length}행 복사 완료`,
+                percent: 0,
+              });
+            }
+          }
+
           emit('progress', {
             phase: 'begin',
-            message: `${spec.table} TRUNCATE 중...`,
+            message: `${spec.table} ${targetLabel} TRUNCATE`,
             percent: 0,
           });
+
           await callTargetRaw(
             targetUrl,
             `/api/admin/sync/${table}/begin`,
@@ -199,11 +325,8 @@ export class AdminSyncController {
             {},
           );
 
-          // 2) total count
-          const [countRows] = await this.pool.query<RowDataPacket[]>(
-            `SELECT COUNT(*) AS total FROM \`${spec.table}\``,
-          );
-          const total = Number(countRows[0]?.total ?? 0);
+          const total = await this.adminSyncRepo.count(spec.table);
+
           emit('progress', {
             phase: 'count',
             total,
@@ -217,46 +340,53 @@ export class AdminSyncController {
             return;
           }
 
-          // 3) chunked read + push
-          const colList = spec.columns.map((c) => `\`${c}\``).join(', ');
           let transferred = 0;
           let lastSeq = 0;
 
           while (!cancelled) {
-            const [chunkRows] = await this.pool.query<RowDataPacket[]>(
-              `SELECT ${colList} FROM \`${spec.table}\` WHERE seq > ${lastSeq} ORDER BY seq ASC LIMIT ${SYNC_CHUNK_SIZE}`,
-            );
-            if (chunkRows.length === 0) break;
-
-            const values = chunkRows.map((r) =>
-              spec.columns.map((c) => normalize(r[c])),
-            );
-
-            const last = chunkRows[chunkRows.length - 1];
-            lastSeq = Number(last.seq);
-
-            const res = await callTargetRaw(
-              targetUrl,
-              `/api/admin/sync/${table}/chunk`,
-              remoteToken,
-              { rows: values },
-            );
-            const inserted = Number(
-              (res as { inserted?: number })?.inserted ?? 0,
-            );
-            transferred += inserted;
-
-            emit('progress', {
-              phase: 'chunk',
-              total,
-              transferred,
-              percent: Math.min(99, Math.floor((transferred / total) * 100)),
+            const rows = await this.adminSyncRepo.readChunk(
+              spec,
               lastSeq,
-            });
+              SYNC_CHUNK_SIZE,
+            );
+            const values = rows.map((row) =>
+              spec.columns.map((column) => normalize(row[column])),
+            );
+
+            if (values.length === 0) break;
+            const last = values[values.length - 1];
+            lastSeq = Number(last[seqIndex] ?? lastSeq);
+
+            for (const rows of splitRowsByPayloadSize(values)) {
+              if (cancelled) break;
+
+              const res = await callTargetRaw(
+                targetUrl,
+                `/api/admin/sync/${table}/chunk`,
+                remoteToken,
+                { rows },
+              );
+              const inserted = Number(
+                (res as { inserted?: number })?.inserted ?? 0,
+              );
+              transferred += inserted;
+
+              emit('progress', {
+                phase: 'chunk',
+                total,
+                transferred,
+                percent: Math.min(99, Math.floor((transferred / total) * 100)),
+                lastSeq,
+              });
+
+              await sleep(SYNC_CHUNK_DELAY_MS);
+            }
+
+            if (cancelled) break;
           }
 
           if (cancelled) {
-            emit('error', { message: '취소됨' });
+            emit('error', { message: 'cancelled' });
             subscriber.complete();
             return;
           }
@@ -289,11 +419,42 @@ export class AdminSyncController {
 function normalize(v: unknown): unknown {
   if (v === undefined) return null;
   if (v instanceof Date) {
-    // mysql2는 DATETIME을 Date 객체로 반환. ISO 대신 'YYYY-MM-DD HH:mm:ss' 사용
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())} ${pad(v.getHours())}:${pad(v.getMinutes())}:${pad(v.getSeconds())}`;
   }
   return v;
+}
+
+function splitRowsByPayloadSize(rows: unknown[][]): unknown[][][] {
+  const batches: unknown[][][] = [];
+  let current: unknown[][] = [];
+
+  for (const row of rows) {
+    const next = [...current, row];
+    if (
+      current.length > 0 &&
+      payloadSize({ rows: next }) > SYNC_MAX_PAYLOAD_BYTES
+    ) {
+      batches.push(current);
+      current = [row];
+    } else {
+      current = next;
+    }
+  }
+
+  if (current.length > 0) {
+    batches.push(current);
+  }
+
+  return batches;
+}
+
+function payloadSize(body: unknown): number {
+  return Buffer.byteLength(JSON.stringify(body), 'utf8');
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function callTargetRaw(
@@ -315,7 +476,7 @@ async function callTargetRaw(
   const text = await res.text();
   if (!res.ok) {
     throw new Error(
-      `target ${path} 실패 (${res.status}): ${text.slice(0, 300)}`,
+      `target ${path} failed (${res.status}): ${text.slice(0, 300)}`,
     );
   }
   try {

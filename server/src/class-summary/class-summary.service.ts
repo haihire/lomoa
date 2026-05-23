@@ -1,16 +1,14 @@
 ﻿import { Injectable, Inject, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
-import type { Pool } from 'mysql2/promise';
-import type { RowDataPacket } from 'mysql2';
 import type { Redis } from 'ioredis';
 import { createHash } from 'crypto';
-import { DB_POOL } from '../db/db.module';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { isLocalQuotaApisDisabled } from '../common/local-dev-flags';
+import { ClassSummaryRepository } from './class-summary.repository';
 
 // 직업별 인벤 게시판 ID (기획.md 기준)
 const CLASS_BOARD: Record<string, number> = {
@@ -56,20 +54,6 @@ const STAGGER_DELAY_MS = 70_000;
 // Redis 키: 직업별 크롤링 제목 해시
 const hashKey = (className: string) => `class-summary:hash:${className}`;
 
-interface CountRow extends RowDataPacket {
-  cnt: number;
-}
-
-interface ExistsRow extends RowDataPacket {
-  exists: 1;
-}
-
-interface SummaryRow extends RowDataPacket {
-  className: string;
-  summary: string;
-  updatedAt: string;
-}
-
 @Injectable()
 export class ClassSummaryService implements OnModuleInit {
   private readonly logger = new Logger(ClassSummaryService.name);
@@ -78,7 +62,7 @@ export class ClassSummaryService implements OnModuleInit {
   private isRunning = false; // 동시 실행 방지
 
   constructor(
-    @Inject(DB_POOL) private readonly pool: Pool,
+    private readonly classSummaryRepo: ClassSummaryRepository,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly config: ConfigService,
   ) {
@@ -100,10 +84,7 @@ export class ClassSummaryService implements OnModuleInit {
       return;
     }
 
-    const [rows] = await this.pool.execute<CountRow[]>(
-      'SELECT COUNT(*) as cnt FROM loa_class_summaries',
-    );
-    const currentCount = rows[0]?.cnt ?? 0;
+    const currentCount = await this.classSummaryRepo.count();
     if (currentCount < CLASS_LIST.length) {
       this.logger.log(
         `DB에 ${currentCount}/${CLASS_LIST.length}개 — 미완성 직업 크롤링 시작`,
@@ -176,12 +157,7 @@ export class ClassSummaryService implements OnModuleInit {
       .digest('hex');
 
     // DB에 데이터가 있는 경우에만 해시 비교로 스킵
-    const [existing] = await this.pool.execute<ExistsRow[]>(
-      'SELECT 1 as exists FROM loa_class_summaries WHERE class_name = ? LIMIT 1',
-      [className],
-    );
-
-    if (existing.length > 0) {
+    if (await this.classSummaryRepo.exists(className)) {
       const prevHash = await this.redis.get(hashKey(className));
       if (prevHash === currentHash) {
         this.logger.debug(`[${className}] 변경 없음 — Gemini 스킵`);
@@ -192,12 +168,7 @@ export class ClassSummaryService implements OnModuleInit {
     const summary = await this.summarize(className, titles);
     if (!summary) return true; // Gemini 호출은 했으므로 true
 
-    await this.pool.execute(
-      `INSERT INTO loa_class_summaries (class_name, summary, updated_at)
-       VALUES (?, ?, NOW())
-       ON DUPLICATE KEY UPDATE summary = VALUES(summary), updated_at = NOW()`,
-      [className, summary],
-    );
+    await this.classSummaryRepo.upsert(className, summary);
 
     await this.redis.set(hashKey(className), currentHash, 'EX', 25 * 60 * 60);
 
@@ -309,33 +280,14 @@ export class ClassSummaryService implements OnModuleInit {
   async findAll(): Promise<
     { className: string; summary: string; updatedAt: string }[]
   > {
-    const [rows] = await this.pool.execute<SummaryRow[]>(
-      `SELECT class_name AS className, summary,
-              DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i') AS updatedAt
-       FROM loa_class_summaries
-       ORDER BY FIELD(class_name,
-         '디스트로이어','워로드','버서커','홀리나이트','슬레이어','발키리',
-         '배틀마스터','인파이터','기공사','창술사','스트라이커','브레이커',
-         '데빌헌터','블래스터','호크아이','스카우터','건슬링어',
-         '바드','서머너','아르카나','소서리스',
-         '블레이드','데모닉','리퍼','소울이터',
-         '도화가','기상술사','환수사','가디언나이트'
-       )`,
-    );
-    return rows;
+    return this.classSummaryRepo.findAll(CLASS_LIST);
   }
 
   /** 단일 직업 요약 조회 */
   async findOne(
     className: string,
   ): Promise<{ className: string; summary: string; updatedAt: string } | null> {
-    const [rows] = await this.pool.execute<SummaryRow[]>(
-      `SELECT class_name AS className, summary,
-              DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i') AS updatedAt
-       FROM loa_class_summaries WHERE class_name = ?`,
-      [className],
-    );
-    return rows[0] ?? null;
+    return this.classSummaryRepo.findOne(className);
   }
 }
 

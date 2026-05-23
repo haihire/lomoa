@@ -1,13 +1,13 @@
 import { Module } from '@nestjs/common';
 import { SitesController } from './sites.controller';
 import { SitesService } from './sites.service';
-import { DbModule } from '../db/db.module';
 import { KakaoModule } from '../kakao/kakao.module';
+import { SitesRepository } from './sites.repository';
 
 @Module({
-  imports: [DbModule, KakaoModule],
+  imports: [KakaoModule],
   controllers: [SitesController],
-  providers: [SitesService],
-  exports: [SitesService],
+  providers: [SitesService, SitesRepository],
+  exports: [SitesService, SitesRepository],
 })
 export class SitesModule {}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { buildGuestNotice, useAdminRole } from "@/lib/admin-role";
 
 const CACHE_KEYS = [
   { key: "sites", label: "사이트 목록", desc: "sites:all" },
@@ -14,8 +15,19 @@ export default function AdminCachePage() {
   const [status, setStatus] = useState<StatusMap>({});
   const [allLoading, setAllLoading] = useState(false);
   const [allResult, setAllResult] = useState("");
+  const [accessNotice, setAccessNotice] = useState("");
+  const role = useAdminRole();
+  const isGuest = role === "guest";
+  const isWorking = allLoading || Object.values(status).includes("loading");
+
+  function requireMaster(action: string) {
+    if (!isGuest) return true;
+    setAccessNotice(buildGuestNotice(action));
+    return false;
+  }
 
   async function purgeOne(key: string) {
+    if (!requireMaster("캐시 개별 새로고침")) return;
     setStatus((p) => ({ ...p, [key]: "loading" }));
     const res = await fetch("/api/admin/cache", {
       method: "POST",
@@ -27,6 +39,7 @@ export default function AdminCachePage() {
   }
 
   async function purgeAll() {
+    if (!requireMaster("전체 캐시 새로고침")) return;
     setAllLoading(true);
     setAllResult("");
     const res = await fetch("/api/admin/cache", { method: "DELETE" });
@@ -53,7 +66,20 @@ export default function AdminCachePage() {
         <p className="admin-page-subtitle">
           캐시를 삭제하면 다음 요청 시 DB에서 새로 조회합니다.
         </p>
+        {accessNotice && (
+          <pre className="mt-3 whitespace-pre-wrap rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            {accessNotice}
+          </pre>
+        )}
       </div>
+
+      {isWorking && (
+        <div className="admin-loading-box admin-loading-box-compact mb-4">
+          <p className="text-sm text-[color:var(--admin-text-muted)]">
+            캐시 작업을 처리하는 중입니다...
+          </p>
+        </div>
+      )}
 
       <div className="admin-card admin-card-padded space-y-3 mb-6">
         {CACHE_KEYS.map(({ key, label, desc }) => (

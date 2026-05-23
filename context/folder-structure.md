@@ -8,6 +8,7 @@ daloa/
 ├── .gitignore
 ├── AGENTS.md                     # 에이전트 공통 규칙
 ├── docker-compose.yml            # 프로덕션 서비스 정의 (nest, postgres, redis, nginx)
+├── docker-compose.override.yml   # 로컬 개발 전용 오버라이드 (Git 미포함)
 │
 ├── .github/
 │   ├── pull_request_template.md  # PR 템플릿
@@ -25,6 +26,7 @@ daloa/
 │   ├── next.config.ts
 │   ├── tsconfig.json
 │   ├── vercel.json               # ignoreCommand (변경 없을 때 빌드 스킵)
+│   ├── instrumentation.ts        # 서버 부팅 시 console 가로채기 → logs/ 기록
 │   ├── vitest.config.ts
 │   ├── vitest.setup.ts
 │   ├── proxy.ts                  # Next.js 미들웨어 (관리자 세션 검증)
@@ -39,22 +41,27 @@ daloa/
 │   │   ├── admin/                # 관리자 페이지
 │   │   │   ├── layout.tsx
 │   │   │   ├── page.tsx          # 관리자 대시보드
+│   │   │   ├── login/page.tsx    # 관리자 로그인
 │   │   │   ├── sync/page.tsx     # DB 동기화 (SSE)
 │   │   │   ├── monitoring/page.tsx # 모니터링 대시보드
 │   │   │   ├── characters/page.tsx # 캐릭터 목록
-│   │   │   └── sites/page.tsx    # 사이트 CRUD
+│   │   │   ├── sites/page.tsx    # 사이트 CRUD
+│   │   │   ├── youtube/page.tsx  # 유튜브 캐시 관리
+│   │   │   └── cache/page.tsx    # Redis 캐시 삭제
 │   │   └── api/                  # Next.js API Route (NestJS 프록시)
 │   │       ├── admin/
-│   │       │   ├── auth/         # 로그인·로그아웃
-│   │       │   ├── sync/         # DB 동기화 + check
-│   │       │   ├── monitoring/   # 모니터링 API
-│   │       │   ├── characters/   # 캐릭터 API
-│   │       │   ├── sites/        # 사이트 CRUD API
-│   │       │   └── cache/        # Redis 캐시 삭제
+│   │       │   ├── auth/login, auth/logout
+│   │       │   ├── sync/[table], sync/check
+│   │       │   ├── monitoring/dashboard, recent, series, slow-requests, summary, system/current
+│   │       │   ├── characters/, characters/stat-builds
+│   │       │   ├── sites/, sites/[id]
+│   │       │   └── cache/, cache/snapshot-youtube
 │   │       ├── revalidate/       # ISR 캐시 무효화
+│   │       ├── streamers/popular, streamers/view-history
 │   │       └── telemetry/        # 텔레메트리 수집
 │   ├── components/
-│   │   ├── GoogleAnalytics.tsx
+│   │   ├── GoogleAnalytics.tsx   # GA4 스크립트 삽입
+│   │   ├── MonitoringBeacon.tsx  # 페이지 뷰·요청 시간 텔레메트리 전송
 │   │   ├── characters/
 │   │   │   ├── StatBuildList.tsx
 │   │   │   └── StatBuildList.test.tsx
@@ -64,11 +71,9 @@ daloa/
 │   │   ├── sites/
 │   │   │   ├── SiteList.tsx
 │   │   │   └── SiteList.test.tsx
-│   │   ├── streamers/
-│   │   │   ├── StreamerList.tsx
-│   │   │   └── StreamerList.test.tsx
 │   │   └── youtube/
-│   │       ├── YoutubeList.tsx
+│   │       ├── YoutubeList.tsx       # 인기 영상 목록
+│   │       ├── YoutubeSection.tsx    # 유튜브 섹션 래퍼
 │   │       └── YoutubeList.test.tsx
 │   ├── lib/
 │   │   ├── gtag.ts               # GA4 헬퍼 함수
@@ -173,9 +178,12 @@ daloa/
 │
 ├── scripts/
 │   ├── dev.ps1                   # 로컬 개발 환경 시작
+│   ├── test.ps1                  # 전체 테스트 실행
 │   ├── cleanup-logs.ps1          # 30일 이상 로그 자동 삭제
+│   ├── deploy.ps1                # 레거시 EC2 배포 스크립트 (현재 GitHub Actions 사용)
 │   ├── init-db.sql               # DB 스키마 초기화 (PostgreSQL)
 │   ├── dump-db.js                # DB 덤프 스크립트
+│   ├── migrate-apm-data.sh       # APM 데이터 MySQL → PostgreSQL 마이그레이션 (완료)
 │   └── migrate-mysql-to-postgres.sh # MySQL → PostgreSQL 마이그레이션 (완료)
 │
 ├── context/                      # ── AI 컨텍스트 문서 ──

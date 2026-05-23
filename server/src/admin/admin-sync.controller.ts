@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   MessageEvent,
@@ -127,6 +128,16 @@ export class AdminSyncController {
     private readonly config: ConfigService,
     private readonly authService: AdminAuthService,
   ) {}
+
+  @Get(':table/export')
+  @UseGuards(AdminWriteGuard)
+  @RequireOwner()
+  async exportTable(@Param('table') table: string) {
+    const spec = specOrThrow(table);
+    const rows = await this.adminSyncRepo.readAll(spec, 'seq');
+    const values = rows.map((r) => spec.columns.map((c) => normalize(r[c])));
+    return { table: spec.table, columns: [...spec.columns], rows: values };
+  }
 
   @Post(':table/begin')
   @UseGuards(AdminWriteGuard)

@@ -45,16 +45,16 @@ client/
 │   └── telemetry/              # 텔레메트리 수집
 │
 ├── components/
+│   ├── MonitoringBeacon.tsx    # 페이지 뷰·요청 시간 텔레메트리 전송
 │   ├── characters/
 │   │   └── StatBuildList.tsx   # 특성 빌드 분포 (탭 + 바 차트)
 │   ├── class-summary/
 │   │   └── ClassSummaryList.tsx # 직업 AI 한줄평
 │   ├── sites/
 │   │   └── SiteList.tsx        # 사이트 카드 그리드
-│   ├── streamers/
-│   │   └── StreamerList.tsx    # 유튜브 라이브 목록
 │   └── youtube/
-│       └── YoutubeList.tsx     # 유튜브 인기 영상
+│       ├── YoutubeList.tsx     # 유튜브 인기 영상 목록
+│       └── YoutubeSection.tsx  # 유튜브 섹션 래퍼
 │
 ├── lib/
 │   ├── gtag.ts                 # GA4 헬퍼

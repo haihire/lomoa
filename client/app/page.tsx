@@ -11,9 +11,13 @@ async function recordServerTiming(input: {
   path: string;
   durationMs: number;
 }) {
+  const telemetryToken = process.env.TELEMETRY_INGEST_TOKEN;
   await fetch(`${API}/api/telemetry/request`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(telemetryToken ? { "x-telemetry-token": telemetryToken } : {}),
+    },
     body: JSON.stringify({
       type: "request",
       scope: "section",

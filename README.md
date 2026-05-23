@@ -9,14 +9,13 @@
 
 - Docker
 - TypeScript: 타입 안정성으로 런타임 에러 사전 방지
-- Next.js: SSR
-- NestJS: 개발 편의성
-- MariaDB: 개발 편의성
+- Next.js: SSR (Vercel 배포)
+- NestJS: 백엔드 API 서버
+- PostgreSQL: 주 데이터베이스
+- Prisma 7: ORM (driver adapter 방식)
 - Redis: 캐시로 속도 개선
-- Nginx: 라우팅
-- Vercel: 무료 비용
-- AWS EC2 + Nginx
-- Git Action
+- Nginx: 리버스 프록시
+- AWS EC2 + GitHub Actions: 서버 배포 자동화
 
 ## 개선한 점들
 

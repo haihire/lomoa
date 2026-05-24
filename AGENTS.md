@@ -29,12 +29,8 @@
 - `main`
 - `fix/admin`
 - `feat/admin`
-- `fix/sites`
-- `feat/sites`
-- `fix/youtube`
-- `feat/youtube`
-- `fix/build-stats`
-- `feat/build-stats`
+- `fix/mainPage`
+- `feat/mainPage`
 - `chore/docs`
 
 운영 방식:

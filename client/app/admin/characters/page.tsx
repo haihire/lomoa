@@ -40,22 +40,34 @@ const STAT_BUILDS = [
 ];
 const PAGE_SIZE = 20;
 
+let charactersCache: {
+  result: ListResult;
+  search: string;
+  statBuild: string;
+  classDetail: string;
+  page: number;
+} | null = null;
+
 export default function AdminCharactersPage() {
-  const [result, setResult] = useState<ListResult | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [result, setResult] = useState<ListResult | null>(
+    charactersCache?.result ?? null,
+  );
+  const [loading, setLoading] = useState(charactersCache === null);
   const [error, setError] = useState("");
   const [accessNotice, setAccessNotice] = useState("");
   const role = useAdminRole();
   const isGuest = role === "guest";
 
-  const [search, setSearch] = useState("");
-  const [statBuild, setStatBuild] = useState("");
-  const [classDetail, setClassDetail] = useState("");
-  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState(charactersCache?.search ?? "");
+  const [statBuild, setStatBuild] = useState(charactersCache?.statBuild ?? "");
+  const [classDetail, setClassDetail] = useState(
+    charactersCache?.classDetail ?? "",
+  );
+  const [page, setPage] = useState(charactersCache?.page ?? 1);
 
   const load = useCallback(
     async (p = page) => {
-      setLoading(true);
+      if (charactersCache === null) setLoading(true);
       const params = new URLSearchParams({
         page: String(p),
         pageSize: String(PAGE_SIZE),
@@ -71,7 +83,9 @@ export default function AdminCharactersPage() {
         setLoading(false);
         return;
       }
-      setResult((await res.json()) as ListResult);
+      const data = (await res.json()) as ListResult;
+      charactersCache = { result: data, search, statBuild, classDetail, page: p };
+      setResult(data);
       setLoading(false);
     },
     [page, search, statBuild, classDetail],

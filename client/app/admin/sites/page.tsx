@@ -90,9 +90,11 @@ function getCategoryTone(category: string | null) {
   return "border-gray-200 bg-gray-100 text-gray-600";
 }
 
+let sitesCache: Site[] | null = null;
+
 export default function AdminSitesPage() {
-  const [sites, setSites] = useState<Site[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [sites, setSites] = useState<Site[]>(sitesCache ?? []);
+  const [loading, setLoading] = useState(sitesCache === null);
   const [error, setError] = useState("");
   const [accessNotice, setAccessNotice] = useState("");
   const [busyMessage, setBusyMessage] = useState<string | null>(null);
@@ -126,6 +128,7 @@ export default function AdminSitesPage() {
           return null;
         }
         const data = (await res.json()) as Site[];
+        sitesCache = data;
         setSites(data);
         setError("");
         return data;
@@ -142,7 +145,7 @@ export default function AdminSitesPage() {
   );
 
   useEffect(() => {
-    void load({ withSpinner: true });
+    void load({ withSpinner: sitesCache === null });
   }, [load]);
 
   function startEdit(site: Site) {

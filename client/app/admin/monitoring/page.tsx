@@ -90,9 +90,11 @@ function toFixedHundred<T extends { count: number }>(
   return raw.map((r, idx) => ({ ...r.item, pct: pct[idx] }));
 }
 
+let monitoringCache: Dashboard | null = null;
+
 export default function MonitoringPage() {
-  const [data, setData] = useState<Dashboard>(EMPTY_DASHBOARD);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<Dashboard>(monitoringCache ?? EMPTY_DASHBOARD);
+  const [loading, setLoading] = useState(monitoringCache === null);
   const [rangeDays, setRangeDays] = useState<(typeof RANGE_OPTIONS)[number]>(7);
   const [liveVisitDelta, setLiveVisitDelta] = useState(0);
   const [deviceTab, setDeviceTab] = useState<"device" | "browser">("device");
@@ -103,7 +105,7 @@ export default function MonitoringPage() {
   useEffect(() => {
     let alive = true;
     async function load(initial = false) {
-      if (initial) setLoading(true);
+      if (initial && monitoringCache === null) setLoading(true);
       try {
         const [dashboardRes, currentRes] = await Promise.all([
           fetch("/api/admin/monitoring/dashboard?days=7", { cache: "no-store" }),
@@ -120,6 +122,7 @@ export default function MonitoringPage() {
 
         setData((prev) => {
           const base = dashboard ?? prev;
+          if (dashboard) monitoringCache = base;
           const livePoint = current
             ? {
                 at: current.created_at,

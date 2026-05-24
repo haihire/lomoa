@@ -53,7 +53,7 @@ export default function SyncPage() {
   }
 
   const handleSyncClick = (tableKey: "users" | "sites") => {
-    if (!requireMaster("DB 동기화")) return;
+    if (!requireMaster("DB 동기화(로컬전용)")) return;
     const table = TABLES.find((item) => item.key === tableKey);
     const ok = window.confirm(
       `[${table?.label ?? tableKey}] (local → production)\n\n프로덕션 테이블을 비우고 로컬 데이터를 복사합니다.\n계속하시겠습니까?`,
@@ -67,14 +67,22 @@ export default function SyncPage() {
   async function start(sessionId: string) {
     if (!activeTable) return;
 
-    setState({ ...INITIAL, phase: "login", message: "local → production 준비 중..." });
+    setState({
+      ...INITIAL,
+      phase: "login",
+      message: "local → production 준비 중...",
+    });
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
     try {
       const res = await fetch(
         `/api/admin/sync/${activeTable}?sessionId=${encodeURIComponent(sessionId)}&direction=local-to-prod`,
-        { method: "GET", signal: ctrl.signal, headers: { accept: "text/event-stream" } },
+        {
+          method: "GET",
+          signal: ctrl.signal,
+          headers: { accept: "text/event-stream" },
+        },
       );
       if (!res.ok || !res.body) {
         const txt = await res.text().catch(() => "");
@@ -101,7 +109,8 @@ export default function SyncPage() {
       setState((s) => ({
         ...s,
         phase: "error",
-        error: err instanceof Error ? err.message : "동기화 중 오류가 발생했습니다.",
+        error:
+          err instanceof Error ? err.message : "동기화 중 오류가 발생했습니다.",
       }));
     } finally {
       abortRef.current = null;
@@ -110,7 +119,11 @@ export default function SyncPage() {
 
   function cancel() {
     abortRef.current?.abort();
-    setState((s) => ({ ...s, phase: "error", error: "사용자가 취소했습니다." }));
+    setState((s) => ({
+      ...s,
+      phase: "error",
+      error: "사용자가 취소했습니다.",
+    }));
   }
 
   async function syncCheck(u: string, p: string) {
@@ -140,7 +153,9 @@ export default function SyncPage() {
       await start(data.sessionId);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "원격 관리자 인증 중 오류가 발생했습니다.",
+        err instanceof Error
+          ? err.message
+          : "원격 관리자 인증 중 오류가 발생했습니다.",
       );
     } finally {
       setLoading(false);
@@ -159,7 +174,8 @@ export default function SyncPage() {
           <h1 className="text-2xl font-bold">동기화</h1>
           <p className="mt-2 text-sm text-gray-400">
             로컬 데이터를 프로덕션으로 복사합니다. 대상 테이블은{" "}
-            <strong className="text-red-400">TRUNCATE</strong> 후 전체 복사됩니다.
+            <strong className="text-red-400">TRUNCATE</strong> 후 전체
+            복사됩니다.
           </p>
           {accessNotice && (
             <pre className="mt-3 whitespace-pre-wrap rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -176,7 +192,9 @@ export default function SyncPage() {
                 className="rounded-xl border border-gray-700 bg-gray-900 p-5"
                 key={t.key}
               >
-                <h2 className="text-lg font-semibold text-gray-100">{t.label}</h2>
+                <h2 className="text-lg font-semibold text-gray-100">
+                  {t.label}
+                </h2>
                 <p className="mt-1 text-xs text-gray-400">
                   로컬 데이터를 프로덕션으로 동기화합니다.
                 </p>
@@ -218,7 +236,10 @@ export default function SyncPage() {
                       {phaseLabel(tableState.phase)}
                     </span>
                     {tableState.message && (
-                      <span className="text-gray-500"> · {tableState.message}</span>
+                      <span className="text-gray-500">
+                        {" "}
+                        · {tableState.message}
+                      </span>
                     )}
                   </div>
                   {tableState.error && (
@@ -235,7 +256,9 @@ export default function SyncPage() {
                     disabled={running}
                     className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-700"
                   >
-                    {activeTable === t.key && running ? "동기화 중..." : "동기화"}
+                    {activeTable === t.key && running
+                      ? "동기화 중..."
+                      : "동기화"}
                   </button>
                   {activeTable === t.key && running && (
                     <button
@@ -307,13 +330,20 @@ export default function SyncPage() {
 
 function phaseLabel(p: Phase): string {
   switch (p) {
-    case "idle": return "대기";
-    case "login": return "원격 관리자 인증";
-    case "begin": return "TRUNCATE";
-    case "count": return "건수 조회";
-    case "chunk": return "전송 중";
-    case "done": return "완료";
-    case "error": return "오류";
+    case "idle":
+      return "대기";
+    case "login":
+      return "원격 관리자 인증";
+    case "begin":
+      return "TRUNCATE";
+    case "count":
+      return "건수 조회";
+    case "chunk":
+      return "전송 중";
+    case "done":
+      return "완료";
+    case "error":
+      return "오류";
   }
 }
 
@@ -342,14 +372,16 @@ function handleEvent(
     if (evt === "progress") {
       if (typeof data.phase === "string") next.phase = data.phase as Phase;
       if (typeof data.total === "number") next.total = data.total;
-      if (typeof data.transferred === "number") next.transferred = data.transferred;
+      if (typeof data.transferred === "number")
+        next.transferred = data.transferred;
       if (typeof data.percent === "number") next.percent = data.percent;
       if (typeof data.message === "string") next.message = data.message;
     } else if (evt === "done") {
       next.phase = "done";
       next.percent = 100;
       if (typeof data.total === "number") next.total = data.total;
-      if (typeof data.transferred === "number") next.transferred = data.transferred;
+      if (typeof data.transferred === "number")
+        next.transferred = data.transferred;
       next.message = "동기화 완료";
     } else if (evt === "error") {
       next.phase = "error";

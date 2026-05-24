@@ -66,18 +66,15 @@ Vercel 프로젝트 Settings → Environment Variables:
 | 변수명                    | 환경        | 값                      |
 | ------------------------- | ----------- | ----------------------- |
 | `NEST_API_URL`            | All         | `https://api.daloa.kr`  |
-| `REVALIDATE_SECRET`       | All         | (서버와 동일값)          |
-| `TELEMETRY_INGEST_TOKEN`  | All         | (서버와 동일값)          |
-| `NEXT_PUBLIC_GA_ID`       | Production  | `G-XXXXXXXXXX`          |
+| `REVALIDATE_SECRET`       | All         | (EC2 `NEXT_REVALIDATE_SECRET`과 동일값) |
+| `TELEMETRY_INGEST_TOKEN`  | All         | (EC2 `TELEMETRY_INGEST_TOKEN`과 동일값) |
 | `SYNC_TARGET_API_URL`     | All         | `https://api.daloa.kr`  |
+| `NEXT_PUBLIC_GA_ID`       | All         | (Google Analytics 측정 ID) |
 
-### ISR 캐시 강제 무효화
+### ISR 캐시 무효화
 
-```bash
-# Vercel 캐시 무효화 없이 강제 재빌드
-git commit --allow-empty -m "chore: 캐시 무효화"
-git push origin main
-```
+EC2 NestJS가 재시작될 때 `RevalidateService`가 자동으로 `https://daloa.kr/api/revalidate`를 호출해 캐시를 무효화합니다.  
+EC2 `.env`에 `NEXT_REVALIDATE_URL`, `NEXT_REVALIDATE_SECRET`이 설정되어 있어야 동작합니다.
 
 ---
 

@@ -64,6 +64,7 @@ context/env-secrets.md
 # 공개 문서 예외
 !docs/architecture.drawio
 !docs/architecture.svg
+!docs/performance.md
 
 # 에이전트 지침서 (로컬 운영용)
 .github/copilot-instructions.md

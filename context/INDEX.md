@@ -21,15 +21,11 @@
 
 ## 관련 문서
 
-| 파일                                     | 내용                              |
-| ---------------------------------------- | --------------------------------- |
-| [HARNESS.md](../docs/HARNESS.md)         | 테스트·문서 작성 규칙 전체        |
-| [record.md](../docs/record.md)           | 버그 수정·설계 변경 기록          |
-| [기획.md](../docs/기획.md)               | 기능 기획, UI 레이아웃, 미결 과제 |
-| [technicalRead/](../docs/technicalRead/) | 기술 학습 노트                    |
-| [server/logs/](../server/logs/)          | NestJS 런타임 로그                |
-| [client/logs/](../client/logs/)          | Next.js SSR 런타임 로그           |
-| [crawlers/logs/](../crawlers/logs/)      | 크롤러 실행 로그                  |
+| 파일                                | 내용                    |
+| ----------------------------------- | ----------------------- |
+| [server/logs/](../server/logs/)     | NestJS 런타임 로그      |
+| [client/logs/](../client/logs/)     | Next.js SSR 런타임 로그 |
+| [crawlers/logs/](../crawlers/logs/) | 크롤러 실행 로그        |
 
 ---
 
@@ -51,20 +47,10 @@ cd client && npm test          # 컴포넌트 테스트 (Vitest)
 cd server && npm run test:e2e  # E2E (docker-compose up -d 선행)
 ```
 
-### 주요 포트
+### 포트 및 인프라 구성도
 
-| 서비스     | 포트 |
-| ---------- | ---- |
-| Next.js    | 3000 |
-| NestJS     | 3001 |
-| PostgreSQL | 5432 |
-| Redis      | 6379 |
+→ [folder-structure.md](./folder-structure.md)
 
-### EC2 SSH 접속
+### EC2 배포·SSH 접속
 
-```powershell
-ssh -i "C:\Users\tjdtn\Desktop\ingit\daloa\daloa-key.pem" ubuntu@3.39.239.9
-```
-
-- PEM 키 위치: 프로젝트 루트 `daloa-key.pem`
-- 상세 배포 절차: [deployment.md](./deployment.md)
+→ [deployment.md](./deployment.md)

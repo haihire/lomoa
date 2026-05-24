@@ -25,6 +25,8 @@
 | DB 응답 시간   | 500ms  | 50ms    | 90% ↓  |
 | 동시 요청 처리 | 50 QPS | 500 QPS | 10배 ↑ |
 
+→ 상세 기록: [docs/performance.md](docs/performance.md)
+
 ## 시스템 흐름:
 
 <a href="https://raw.githubusercontent.com/haihire/daloa/main/docs/architecture.svg" target="_blank" rel="noopener">
@@ -38,10 +40,6 @@
 - main
 - fix/admin
 - feat/admin
-- fix/sites
-- feat/sites
-- fix/youtube
-- feat/youtube
-- fix/build-stats
-- feat/build-stats
+- fix/mainPage
+- feat/mainPage
 - chore/docs

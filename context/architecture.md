@@ -73,7 +73,7 @@ GET /api/streamers?pageToken=xxx
   → Redis 체크 (youtube:videos:page:N)
   → 캐시 미스 → YouTube Data API v3
   → quota_exceeded 키 존재 시 API 차단 (자동 재개: KST 16:00)
-  → Redis TTL 1시간
+  → Redis TTL 4시간
 ```
 
 ### DB 동기화 (admin-sync)

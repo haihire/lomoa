@@ -77,12 +77,11 @@ export class DockerStatsService {
 
   async getContainerStats(): Promise<ContainerStat[]> {
     try {
-      const { stdout } = await execFileAsync('docker', [
-        'stats',
-        '--no-stream',
-        '--format',
-        '{{json .}}',
-      ]);
+      const { stdout } = await execFileAsync(
+        'docker',
+        ['stats', '--no-stream', '--format', '{{json .}}'],
+        { timeout: 10000 },
+      );
 
       const stats: ContainerStat[] = [];
 

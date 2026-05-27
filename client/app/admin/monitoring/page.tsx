@@ -170,6 +170,7 @@ export default function MonitoringPage() {
     }
     let alive = true;
     setHistoryLoading(true);
+    setContainerHistory([]);
     async function loadHistory() {
       try {
         const res = await fetch(

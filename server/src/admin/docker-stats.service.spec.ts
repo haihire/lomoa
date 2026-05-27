@@ -23,21 +23,17 @@ function createService() {
 }
 
 function mockExecSuccess(stdout: string) {
-  (mockedExecFile as jest.Mock).mockImplementation(
-    (_file: unknown, _args: unknown, callback: unknown) => {
-      (callback as (err: null, out: { stdout: string }) => void)(null, {
-        stdout,
-      });
-    },
-  );
+  (mockedExecFile as jest.Mock).mockImplementation((...args: unknown[]) => {
+    const callback = args[args.length - 1];
+    (callback as (err: null, out: { stdout: string }) => void)(null, { stdout });
+  });
 }
 
 function mockExecError(message: string) {
-  (mockedExecFile as jest.Mock).mockImplementation(
-    (_file: unknown, _args: unknown, callback: unknown) => {
-      (callback as (err: Error) => void)(new Error(message));
-    },
-  );
+  (mockedExecFile as jest.Mock).mockImplementation((...args: unknown[]) => {
+    const callback = args[args.length - 1];
+    (callback as (err: Error) => void)(new Error(message));
+  });
 }
 
 function dockerLine(overrides: Record<string, string> = {}): string {

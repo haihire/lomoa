@@ -326,7 +326,7 @@ export class MonitoringRepository {
       SELECT TO_CHAR(DATE(last_seen_at), 'MM-DD') AS bucket,
              COUNT(*) AS count
       FROM apm_page_visits
-      WHERE last_seen_at >= NOW() - (${days} * INTERVAL '1 day')
+      WHERE last_seen_at >= NOW() - (${days}::int * INTERVAL '1 day')
       GROUP BY DATE(last_seen_at)
       ORDER BY DATE(last_seen_at) ASC
     `;
@@ -341,7 +341,7 @@ export class MonitoringRepository {
       FROM (
         SELECT DATE(created_at) AS day_key
         FROM apm_site_clicks
-        WHERE created_at >= NOW() - (${days} * INTERVAL '1 day')
+        WHERE created_at >= NOW() - (${days}::int * INTERVAL '1 day')
       ) AS site_click_days
       GROUP BY day_key
       ORDER BY day_key ASC
@@ -357,7 +357,7 @@ export class MonitoringRepository {
       FROM (
         SELECT DATE(created_at) AS day_key
         FROM apm_youtube_clicks
-        WHERE created_at >= NOW() - (${days} * INTERVAL '1 day')
+        WHERE created_at >= NOW() - (${days}::int * INTERVAL '1 day')
       ) AS youtube_click_days
       GROUP BY day_key
       ORDER BY day_key ASC
@@ -376,7 +376,7 @@ export class MonitoringRepository {
           api_key,
           duration_ms
         FROM monitoring_api_probes
-        WHERE created_at >= NOW() - (${rangeDays} * INTERVAL '1 day')
+        WHERE created_at >= NOW() - (${rangeDays}::int * INTERVAL '1 day')
       ) AS probe_buckets
       GROUP BY bucket_start, api_key
       ORDER BY bucket_start ASC
@@ -454,7 +454,7 @@ export class MonitoringRepository {
               ROUND(AVG(mem_percent)::numeric, 2)::float AS avg_mem,
               ROUND(AVG(mem_used_mb))::int AS avg_mem_used_mb
        FROM ${table}
-       WHERE created_at >= NOW() - ($1 * INTERVAL '1 day')
+       WHERE created_at >= NOW() - ($1::int * INTERVAL '1 day')
        GROUP BY DATE_TRUNC('hour', created_at)
        ORDER BY DATE_TRUNC('hour', created_at) ASC`,
       days,
@@ -467,7 +467,7 @@ export class MonitoringRepository {
   ): Promise<void> {
     const table = DOCKER_TABLE[container];
     await this.prisma.$executeRawUnsafe(
-      `DELETE FROM ${table} WHERE created_at < NOW() - ($1 * INTERVAL '1 day')`,
+      `DELETE FROM ${table} WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')`,
       retentionDays,
     );
   }
@@ -532,7 +532,7 @@ export class MonitoringRepository {
       WHERE id IN (
         SELECT id
         FROM apm_request_timings
-        WHERE created_at < NOW() - ($1 * INTERVAL '1 day')
+        WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')
         ORDER BY id ASC
         LIMIT $2
       )
@@ -554,7 +554,7 @@ export class MonitoringRepository {
       WHERE id IN (
         SELECT id
         FROM monitoring_api_probes
-        WHERE created_at < NOW() - ($1 * INTERVAL '1 day')
+        WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')
         ORDER BY id ASC
         LIMIT $2
       )

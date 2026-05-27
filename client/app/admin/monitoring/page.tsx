@@ -3,6 +3,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
+interface ContainerStat {
+  name: string;
+  label: string;
+  cpuPercent: number;
+  memUsedMb: number;
+  memTotalMb: number;
+  memPercent: number;
+  netInMb: number;
+  netOutMb: number;
+}
+
+interface ContainerHistoryPoint {
+  bucket: string;
+  avgCpu: number;
+  avgMem: number;
+  avgMemUsedMb: number;
+}
+
 type Dashboard = {
   summary: {
     windowMinutes: number;
@@ -14,15 +32,6 @@ type Dashboard = {
       tablet: number;
       bot: number;
     };
-    latestSystem: null | {
-      created_at: string;
-      cpu_percent: number;
-      memory_percent: number;
-      rss_mb: number;
-      heap_used_mb: number;
-      heap_total_mb?: number;
-      total_mem_mb: number;
-    };
   };
   siteClickSeries: { minute: string; count: number }[];
   youtubeClickSeries: { minute: string; count: number }[];
@@ -32,14 +41,8 @@ type Dashboard = {
   osVisits: { osName: string; count: number }[];
   browserVisits: { browserName: string; count: number }[];
   siteClicks: { siteName: string; siteHref: string; siteCategory: string; clickCount: number }[];
-  systemSeries: {
-    at: string;
-    cpuPercent: number;
-    memoryPercent: number;
-    rssMb: number;
-    heapUsedMb: number;
-    totalMemMb: number;
-  }[];
+  pageVisitSeries?: { day: string; count: number }[];
+  youtubeClickTotal?: number;
 };
 
 const EMPTY_DASHBOARD: Dashboard = {
@@ -48,7 +51,6 @@ const EMPTY_DASHBOARD: Dashboard = {
     avgDurationMs: 0,
     pageVisits: 0,
     deviceCounts: { mobile: 0, desktop: 0, tablet: 0, bot: 0 },
-    latestSystem: null,
   },
   siteClickSeries: [],
   youtubeClickSeries: [],
@@ -58,11 +60,7 @@ const EMPTY_DASHBOARD: Dashboard = {
   osVisits: [],
   browserVisits: [],
   siteClicks: [],
-  systemSeries: [],
 };
-
-const RANGE_OPTIONS = [1, 3, 7, 30] as const;
-const LIVE_WINDOW_MS = 60 * 60 * 1000;
 
 function toFixedHundred<T extends { count: number }>(
   items: T[],
@@ -95,10 +93,15 @@ let monitoringCache: Dashboard | null = null;
 export default function MonitoringPage() {
   const [data, setData] = useState<Dashboard>(monitoringCache ?? EMPTY_DASHBOARD);
   const [loading, setLoading] = useState(monitoringCache === null);
-  const [rangeDays, setRangeDays] = useState<(typeof RANGE_OPTIONS)[number]>(7);
   const [liveVisitDelta, setLiveVisitDelta] = useState(0);
   const [deviceTab, setDeviceTab] = useState<"device" | "browser">("device");
   const [activeChart, setActiveChart] = useState<string | null>(null);
+  const [pageVisitDays, setPageVisitDays] = useState<7 | 30>(7);
+  const [sectionTab, setSectionTab] = useState<"sites" | "stat-builds" | "youtube">("sites");
+  const [containers, setContainers] = useState<ContainerStat[]>([]);
+  const [containerTab, setContainerTab] = useState<string>("전체");
+  const [containerHistory, setContainerHistory] = useState<ContainerHistoryPoint[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const hasLoadedRef = useRef(false);
   const prevVisitCountRef = useRef(0);
 
@@ -107,45 +110,16 @@ export default function MonitoringPage() {
     async function load(initial = false) {
       if (initial && monitoringCache === null) setLoading(true);
       try {
-        const [dashboardRes, currentRes] = await Promise.all([
-          fetch("/api/admin/monitoring/dashboard?days=7", { cache: "no-store" }),
-          fetch("/api/admin/monitoring/system/current", { cache: "no-store" }),
-        ]);
+        const dashboardRes = await fetch("/api/admin/monitoring/dashboard?days=7", { cache: "no-store" });
         if (!alive) return;
 
         const dashboard = dashboardRes.ok
           ? ((await dashboardRes.json()) as Dashboard)
           : null;
-        const current = currentRes.ok
-          ? ((await currentRes.json()) as Dashboard["summary"]["latestSystem"])
-          : null;
 
         setData((prev) => {
           const base = dashboard ?? prev;
           if (dashboard) monitoringCache = base;
-          const livePoint = current
-            ? {
-                at: current.created_at,
-                cpuPercent: current.cpu_percent,
-                memoryPercent: current.memory_percent,
-                rssMb: current.rss_mb,
-                heapUsedMb: current.heap_used_mb,
-                totalMemMb: current.total_mem_mb,
-              }
-            : null;
-          const now = Date.now();
-          const mergedSystemSeries = [
-            ...(base.systemSeries ?? []),
-            ...(livePoint ? [livePoint] : []),
-          ]
-            .filter((item) => {
-              const at = new Date(item.at).getTime();
-              return Number.isFinite(at) && now - at <= LIVE_WINDOW_MS;
-            })
-            .reduce<Dashboard["systemSeries"]>((acc, item) => {
-              if (acc.length === 0 || acc[acc.length - 1].at !== item.at) acc.push(item);
-              return acc;
-            }, []);
 
           const nextVisitCount = base.summary.pageVisits ?? 0;
           const prevVisitCount = prevVisitCountRef.current;
@@ -155,17 +129,7 @@ export default function MonitoringPage() {
           }
           prevVisitCountRef.current = nextVisitCount;
 
-          return {
-            ...base,
-            sectionSeries: prev.sectionSeries,
-            systemSeries:
-              mergedSystemSeries.length > 0 ? mergedSystemSeries : prev.systemSeries,
-            summary: {
-              ...base.summary,
-              latestSystem:
-                current ?? base.summary.latestSystem ?? prev.summary.latestSystem,
-            },
-          };
+          return { ...base, sectionSeries: prev.sectionSeries };
         });
         hasLoadedRef.current = true;
       } catch {
@@ -185,39 +149,71 @@ export default function MonitoringPage() {
 
   useEffect(() => {
     let alive = true;
+    async function loadContainers() {
+      try {
+        const res = await fetch("/api/admin/monitoring/containers", { cache: "no-store" });
+        if (!alive || !res.ok) return;
+        setContainers((await res.json()) as ContainerStat[]);
+      } catch {
+        // keep previous
+      }
+    }
+    void loadContainers();
+    const timer = setInterval(() => void loadContainers(), 10_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, []);
+
+  useEffect(() => {
+    if (containerTab === "전체") {
+      setContainerHistory([]);
+      return;
+    }
+    let alive = true;
+    setHistoryLoading(true);
+    setContainerHistory([]);
+    async function loadHistory() {
+      try {
+        const res = await fetch(
+          `/api/admin/monitoring/container-history?container=${containerTab}`,
+          { cache: "no-store" },
+        );
+        if (!alive || !res.ok) return;
+        setContainerHistory((await res.json()) as ContainerHistoryPoint[]);
+      } catch {
+        // keep previous
+      } finally {
+        if (alive) setHistoryLoading(false);
+      }
+    }
+    void loadHistory();
+    return () => { alive = false; };
+  }, [containerTab]);
+
+  useEffect(() => {
+    let alive = true;
     async function loadSectionOnly() {
       try {
-        const res = await fetch(`/api/admin/monitoring/dashboard?days=${rangeDays}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `/api/admin/monitoring/dashboard?days=10&pvDays=${pageVisitDays}`,
+          { cache: "no-store" },
+        );
         if (!alive || !res.ok) return;
         const dashboard = (await res.json()) as Dashboard;
         setData((prev) => ({
           ...prev,
           sectionSeries: dashboard.sectionSeries ?? prev.sectionSeries,
+          pageVisitSeries: dashboard.pageVisitSeries ?? prev.pageVisitSeries,
+          youtubeClickTotal: dashboard.youtubeClickTotal ?? prev.youtubeClickTotal,
         }));
       } catch {
-        // Keep existing section series if fetch fails.
+        // Keep existing data if fetch fails.
       }
     }
     void loadSectionOnly();
     return () => {
       alive = false;
     };
-  }, [rangeDays]);
-
-  const systemChart = useMemo(
-    () =>
-      data.systemSeries.map((item) => ({
-        ...item,
-        minute: item.at ? item.at.slice(11, 16) : "--:--",
-        cpuPercent: Number.isFinite(item.cpuPercent) ? item.cpuPercent : 0,
-        memoryPercent: Number.isFinite(item.memoryPercent) ? item.memoryPercent : 0,
-      })),
-    [data.systemSeries],
-  );
-  const latestSystemPoint = useMemo(() => (systemChart.length > 0 ? systemChart[systemChart.length - 1] : null), [systemChart]);
-  const latestSummarySystem = data.summary.latestSystem;
+  }, [pageVisitDays]);
 
   const siteClickTotal = useMemo(() => data.siteClicks.reduce((sum, item) => sum + item.clickCount, 0), [data.siteClicks]);
 
@@ -289,9 +285,17 @@ export default function MonitoringPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-5 shrink-0">
-        <h1 className="admin-page-title">모니터링</h1>
-        <p className="admin-page-subtitle mt-1">운영 상태와 추세를 빠르게 확인합니다.</p>
+      <div className="mb-5 shrink-0 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="admin-page-title">모니터링</h1>
+          <p className="admin-page-subtitle mt-1">운영 상태와 추세를 빠르게 확인합니다.</p>
+        </div>
+        <div className="flex shrink-0 items-center pt-1 text-xs text-[color:var(--admin-text-muted)]">
+          평균 응답
+          <span className="ml-1 font-semibold text-[color:var(--admin-text)]">
+            {data.summary.avgDurationMs}ms
+          </span>
+        </div>
       </div>
 
       {loading && (
@@ -302,34 +306,97 @@ export default function MonitoringPage() {
         </div>
       )}
 
-      <div className="mb-4 grid shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="admin-stat-card">
-          <p className="admin-stat-label">평균 응답</p>
-          <p className="admin-stat-value mt-1">{data.summary.avgDurationMs}ms</p>
-        </div>
-        <div className="admin-stat-card">
-          <p className="admin-stat-label">페이지 방문(누적)</p>
-          <p className="admin-stat-value mt-1">{data.summary.pageVisits.toLocaleString()}</p>
-        </div>
-        <div className="admin-stat-card">
-          <p className="admin-stat-label">사이트 클릭(누적)</p>
-          <p className="admin-stat-value mt-1">{siteClickTotal.toLocaleString()}</p>
-        </div>
-        <div className="admin-stat-card">
-          <p className="admin-stat-label">실시간 서버 상태</p>
-          <p className="mt-1 text-sm font-semibold text-[color:var(--admin-text)]">
-            CPU {latestSystemPoint?.cpuPercent ?? 0}% · RAM {latestSystemPoint?.memoryPercent ?? 0}%
-          </p>
-          <p className="text-xs text-[color:var(--admin-text-muted)]">
-            RSS {latestSummarySystem?.rss_mb ?? 0}MB · Heap {latestSummarySystem?.heap_used_mb ?? 0}MB
-          </p>
-        </div>
-      </div>
-
       <div className="grid grid-cols-1 gap-4">
+        <div className="admin-card p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-semibold">컨테이너 현황</p>
+            <div className="flex gap-1">
+              <button type="button" onClick={() => setContainerTab("전체")}
+                className={`admin-btn admin-btn-sm ${containerTab === "전체" ? "admin-btn-primary" : "admin-btn-secondary"}`}>
+                전체
+              </button>
+              {containers.map((c) => (
+                <button key={c.name} type="button" onClick={() => setContainerTab(c.label)}
+                  className={`admin-btn admin-btn-sm ${containerTab === c.label ? "admin-btn-primary" : "admin-btn-secondary"}`}>
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {containerTab === "전체" ? (
+            containers.length === 0 ? (
+              <p className="text-xs text-[color:var(--admin-text-muted)]">컨테이너 데이터 없음 (EC2 환경에서만 표시됩니다)</p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {containers.map((c) => (
+                  <div key={c.name} className="rounded border border-[color:var(--admin-border)] p-2.5">
+                    <p className="mb-1.5 text-xs font-semibold">{c.label}</p>
+                    <div className="space-y-0.5 text-xs text-[color:var(--admin-text-muted)]">
+                      <p>CPU <span className="font-medium text-[color:var(--admin-text)]">{c.cpuPercent.toFixed(1)}%</span></p>
+                      <p>메모리 <span className="font-medium text-[color:var(--admin-text)]">{c.memUsedMb}MB</span> ({c.memPercent.toFixed(1)}%)</p>
+                      <p>↓{c.netInMb}MB · ↑{c.netOutMb}MB</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <p className="mb-1 text-xs text-[color:var(--admin-text-muted)]">CPU % (7일)</p>
+                <div className="h-28">
+                  {historyLoading ? (
+                    <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">불러오는 중...</div>
+                  ) : containerHistory.length === 0 ? (
+                    <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">데이터 없음</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={containerHistory}
+                        onMouseEnter={() => setActiveChart("container-cpu")}
+                        onMouseLeave={() => setActiveChart(null)}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis dataKey="bucket" tick={{ fontSize: 9, fill: "#6b7280" }} />
+                        <YAxis tick={{ fontSize: 10, fill: "#6b7280" }} unit="%" />
+                        <Tooltip active={activeChart === "container-cpu"} formatter={(v) => [`${v ?? 0}%`, "CPU"]} wrapperStyle={{ pointerEvents: "none" }} />
+                        <Area type="linear" dataKey="avgCpu" stroke="#2563eb" fill="#bfdbfe" name="CPU %" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              </div>
+              <div>
+                <p className="mb-1 text-xs text-[color:var(--admin-text-muted)]">메모리 % (7일)</p>
+                <div className="h-28">
+                  {historyLoading ? (
+                    <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">불러오는 중...</div>
+                  ) : containerHistory.length === 0 ? (
+                    <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">데이터 없음</div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={containerHistory}
+                        onMouseEnter={() => setActiveChart("container-mem")}
+                        onMouseLeave={() => setActiveChart(null)}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis dataKey="bucket" tick={{ fontSize: 9, fill: "#6b7280" }} />
+                        <YAxis tick={{ fontSize: 10, fill: "#6b7280" }} unit="%" />
+                        <Tooltip active={activeChart === "container-mem"} formatter={(v) => [`${v ?? 0}%`, "메모리"]} wrapperStyle={{ pointerEvents: "none" }} />
+                        <Area type="linear" dataKey="avgMem" stroke="#7c3aed" fill="#ede9fe" name="메모리 %" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="grid auto-rows-min content-start grid-cols-1 gap-4 xl:grid-cols-2">
           <div className="admin-card p-3">
-            <p className="mb-2 text-sm font-semibold">사이트 클릭 타임라인 (일)</p>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-semibold">사이트 클릭 타임라인 (일)</p>
+              <span className="text-xs text-[color:var(--admin-text-muted)]">누적 {siteClickTotal.toLocaleString()}회</span>
+            </div>
             <div className="h-40">
               {loading ? (
                 <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">불러오는 중...</div>
@@ -354,7 +421,10 @@ export default function MonitoringPage() {
           </div>
 
           <div className="admin-card p-3">
-            <p className="mb-2 text-sm font-semibold">유튜브 클릭 타임라인 (일)</p>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-semibold">유튜브 클릭 타임라인 (일)</p>
+              <span className="text-xs text-[color:var(--admin-text-muted)]">누적 {(data.youtubeClickTotal ?? 0).toLocaleString()}회</span>
+            </div>
             <div className="h-40">
               {loading ? (
                 <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">불러오는 중...</div>
@@ -378,50 +448,91 @@ export default function MonitoringPage() {
             </div>
           </div>
 
-          <div className="admin-card p-3 xl:col-span-2">
+          <div className="admin-card p-3">
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold">기능별 응답 추이 (10분 자동점검)</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold">페이지 방문 추이 (일)</p>
+                <span className="text-xs text-[color:var(--admin-text-muted)]">누적 {data.summary.pageVisits.toLocaleString()}회</span>
+              </div>
               <div className="flex gap-1">
-                {RANGE_OPTIONS.map((d) => (
-                  <button key={d} type="button" onClick={() => setRangeDays(d)} className={`admin-btn admin-btn-sm ${rangeDays === d ? "admin-btn-primary" : "admin-btn-secondary"}`}>
+                {([7, 30] as const).map((d) => (
+                  <button key={d} type="button" onClick={() => setPageVisitDays(d)} className={`admin-btn admin-btn-sm ${pageVisitDays === d ? "admin-btn-primary" : "admin-btn-secondary"}`}>
                     {d}일
                   </button>
                 ))}
               </div>
             </div>
-            <div className="grid gap-2 md:grid-cols-3">
-              {["sites", "stat-builds", "youtube"].map((name) => {
-                const series = data.sectionSeries.filter((item) => item.label === name);
-                const latest = series.length > 0 ? series[series.length - 1] : null;
-                const totalCount = series.reduce((sum, item) => sum + item.count, 0);
-                return (
-                  <div key={name} className="rounded border border-[color:var(--admin-border)] p-2">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <p className="text-xs font-semibold">{name}</p>
-                      <span className="text-[11px] text-[color:var(--admin-text-muted)]">{latest ? `${latest.avgDurationMs}ms · ${totalCount}회` : "데이터 없음"}</span>
-                    </div>
-                    <div className="h-20">
-                      {series.length === 0 ? (
-                        <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">데이터 없음</div>
-                      ) : (
-                        <ResponsiveContainer width="100%" height="100%" minWidth={120} minHeight={60}>
-                          <AreaChart
-                            data={series}
-                            onMouseEnter={() => setActiveChart(`section-${name}`)}
-                            onMouseLeave={() => setActiveChart(null)}
-                          >
-                            <XAxis dataKey="minute" hide />
-                            <YAxis hide />
-                            <Tooltip active={activeChart === `section-${name}`} wrapperStyle={{ pointerEvents: "none" }} />
-                            <Area type="linear" dataKey="avgDurationMs" stroke="#2563eb" fill="#dbeafe" />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="h-20">
+              {loading ? (
+                <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">불러오는 중...</div>
+              ) : (data.pageVisitSeries ?? []).length === 0 ? (
+                <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">데이터 없음</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%" minWidth={220} minHeight={120}>
+                  <AreaChart
+                    data={data.pageVisitSeries}
+                    onMouseEnter={() => setActiveChart("page-visit")}
+                    onMouseLeave={() => setActiveChart(null)}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#6b7280" }} />
+                    <YAxis tick={{ fontSize: 10, fill: "#6b7280" }} />
+                    <Tooltip active={activeChart === "page-visit"} wrapperStyle={{ pointerEvents: "none" }} />
+                    <Area type="linear" dataKey="count" stroke="#7c3aed" fill="#ede9fe" name="페이지 방문" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
             </div>
+          </div>
+
+          <div className="admin-card p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-semibold">기능별 응답 추이 (10분 자동점검)</p>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[color:var(--admin-text-muted)]">최근 10일</span>
+                <div className="flex gap-1">
+                  {(["sites", "stat-builds", "youtube"] as const).map((name) => (
+                    <button key={name} type="button" onClick={() => setSectionTab(name)}
+                      className={`admin-btn admin-btn-sm ${sectionTab === name ? "admin-btn-primary" : "admin-btn-secondary"}`}>
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {(() => {
+              const series = data.sectionSeries.filter((item) => item.label === sectionTab);
+              const latest = series.length > 0 ? series[series.length - 1] : null;
+              const totalCount = series.reduce((sum, item) => sum + item.count, 0);
+              return (
+                <>
+                  <div className="mb-1 flex justify-end">
+                    <span className="text-[11px] text-[color:var(--admin-text-muted)]">
+                      {latest ? `${latest.avgDurationMs}ms · ${totalCount}회` : "데이터 없음"}
+                    </span>
+                  </div>
+                  <div className="h-28">
+                    {series.length === 0 ? (
+                      <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">데이터 없음</div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%" minWidth={120} minHeight={80}>
+                        <AreaChart
+                          data={series}
+                          onMouseEnter={() => setActiveChart(`section-${sectionTab}`)}
+                          onMouseLeave={() => setActiveChart(null)}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                          <XAxis dataKey="minute" tick={{ fontSize: 10, fill: "#6b7280" }} />
+                          <YAxis tick={{ fontSize: 10, fill: "#6b7280" }} unit="ms" />
+                          <Tooltip active={activeChart === `section-${sectionTab}`} wrapperStyle={{ pointerEvents: "none" }} />
+                          <Area type="linear" dataKey="avgDurationMs" stroke="#2563eb" fill="#dbeafe" name="평균 응답" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
 
@@ -519,6 +630,7 @@ export default function MonitoringPage() {
           </div>
         </div>
       </div>
+
     </div>
   );
 }

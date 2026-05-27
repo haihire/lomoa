@@ -202,6 +202,77 @@ DB 전체 캐릭터 수 통계.
 
 ---
 
+## 어드민 모니터링
+
+> 모든 엔드포인트는 `AdminGuard` 필요 (`admin_token` 쿠키).  
+> 클라이언트는 `client/app/api/admin/monitoring/` Next.js 라우트를 통해 프록시.
+
+### `GET /api/admin/monitoring/dashboard`
+
+대시보드 전체 데이터 반환.
+
+**쿼리 파라미터**
+
+- `days` (선택, 기본 7): 조회 기간 (1/3/7/10/30)
+- `pvDays` (선택, 기본 14): 페이지뷰 시계열 기간
+
+**응답 주요 필드**
+
+```json
+{
+  "summary": { "windowMinutes": 60, "avgDurationMs": 120, "pageVisits": 500, "deviceCounts": { "mobile": 300, "desktop": 180, "tablet": 10, "bot": 10 } },
+  "siteClickSeries": [{ "minute": "05-28", "count": 12 }],
+  "youtubeClickSeries": [...],
+  "sectionSeries": [{ "minute": "05-28 01:00", "label": "sites", "avgDurationMs": 80, "count": 5 }],
+  "pageVisits": [{ "path": "/", "device_type": "mobile", "count": 200 }],
+  "countryVisits": [{ "countryCode": "KR", "count": 400 }],
+  "siteClicks": [{ "siteName": "로아", "siteHref": "...", "siteCategory": "공식", "clickCount": 50 }],
+  "pageVisitSeries": [{ "day": "05-28", "count": 120 }],
+  "youtubeClickTotal": 30
+}
+```
+
+### `GET /api/admin/monitoring/containers`
+
+현재 실행 중인 도커 컨테이너 통계 반환 (`docker stats --no-stream` 결과).
+
+**응답 (200)**
+
+```json
+[
+  {
+    "name": "daloa-nest",
+    "label": "nest",
+    "cpuPercent": 5.2,
+    "memUsedMb": 128.4,
+    "memTotalMb": 1024.0,
+    "memPercent": 12.5,
+    "netInMb": 1.2,
+    "netOutMb": 0.8
+  }
+]
+```
+
+- 도커 데몬 미실행 또는 타임아웃(10초) 시 빈 배열 반환
+
+### `GET /api/admin/monitoring/container-history`
+
+컨테이너별 7일 이력 조회 (1시간 버킷 평균).
+
+**쿼리 파라미터**
+
+- `container` (필수): `nest` | `nginx` | `redis` | `postgres`
+
+**응답 (200)**
+
+```json
+[
+  { "bucket": "05-28 01:00", "avgCpu": 3.5, "avgMem": 12.0, "avgMemUsedMb": 128 }
+]
+```
+
+---
+
 ## LostArk API 상태
 
 ### `GET /api/lostark/stats`

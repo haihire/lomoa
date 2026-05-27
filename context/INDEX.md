@@ -47,6 +47,22 @@ cd client && npm test          # 컴포넌트 테스트 (Vitest)
 cd server && npm run test:e2e  # E2E (docker-compose up -d 선행)
 ```
 
+### 브랜치 전략 & CI
+
+```
+sub-branch (feat/xxx, fix/xxx, chore/xxx)
+    │  PR 생성 → CI 자동 실행 (pr-ci.yml)
+    ▼
+feat/admin (통합 브랜치)
+    │  PR 생성 → CI 미실행 (중복 방지)
+    ▼
+main → EC2 자동 배포 (main-post-merge.yml)
+```
+
+- CI(`pr-ci.yml`)는 **main 제외** 모든 브랜치 타겟 PR에서 실행
+- E2E 실행 전 `npx prisma db push`로 테스트 DB 스키마 생성
+- `docker-compose.override.yml`은 로컬 전용 (gitignore), AWS Redis 연결 설정 포함
+
 ### 포트 및 인프라 구성도
 
 → [folder-structure.md](./folder-structure.md)

@@ -52,7 +52,7 @@ daloa/
 │   │       ├── admin/
 │   │       │   ├── auth/login, auth/logout
 │   │       │   ├── sync/[table], sync/check
-│   │       │   ├── monitoring/dashboard, recent, series, slow-requests, summary, system/current
+│   │       │   ├── monitoring/dashboard, containers, container-history
 │   │       │   ├── characters/, characters/stat-builds
 │   │       │   ├── sites/, sites/[id]
 │   │       │   └── cache/, cache/snapshot-youtube
@@ -112,6 +112,8 @@ daloa/
 │   │   │   ├── admin-monitoring.controller.ts
 │   │   │   ├── admin-monitoring.middleware.ts
 │   │   │   ├── admin-monitoring.service.ts
+│   │   │   ├── docker-stats.service.ts       # docker stats 파싱 + 5분 Cron 저장
+│   │   │   ├── docker-stats.service.spec.ts
 │   │   │   ├── admin-sites.controller.ts
 │   │   │   ├── admin-sync.controller.ts
 │   │   │   └── repositories/

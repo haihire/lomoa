@@ -36,6 +36,11 @@
 - **글로벌 Provider**: `PrismaModule`(PostgreSQL), `RedisModule`(REDIS_CLIENT), `ConfigModule`
 - **비즈니스 모듈**: `SitesModule`, `CharactersModule`, `StreamersModule`, `ClassSummaryModule`, `UsersModule`, `LostarkModule`, `KakaoModule`
 - **관리자 모듈**: `AdminModule` — auth/sync/monitoring/cache/sites/characters
+  - `AdminMonitoringService`: 페이지뷰·클릭·API 프로브 기록, 대시보드 집계
+  - `DockerStatsService`: `docker stats --no-stream` 파싱 → 컨테이너 지표 수집
+    - Cron `0 */5 * * * *`: 5분마다 컨테이너 CPU·메모리 DB 저장
+    - Cron `0 30 3 * * *`: 9일 이상 된 도커 메트릭 삭제
+    - `docker-cli`가 NestJS 컨테이너 안에 설치되어 있어야 하며, `/var/run/docker.sock`을 읽기 전용으로 마운트
 - **크론**: `SitesService`(매일 09:00 사이트 점검), `StreamersService`(3시간마다 YouTube 갱신)
 - **에러 필터**: `AllExceptionsFilter` — 5xx 발생 시 카카오 알림, 1분 쿨다운
 - **로거**: `FileLoggerService` — `logs/app-YYYY-MM-DD.log`, `logs/error-YYYY-MM-DD.log` (일별 로테이션)
@@ -113,6 +118,7 @@ AppModule
 ## 배포 환경 (EC2)
 
 - `docker-compose.yml`: `nest`(NestJS), `postgres`(PostgreSQL), `redis`, `nginx` 컨테이너
+- `docker-compose.override.yml`: 로컬 전용 포트/env 오버라이드 (`.gitignore` — 커밋 금지)
 - Next.js는 Vercel에서 호스팅 (EC2 미사용)
 - **자동 배포**: `main` 브랜치 push → GitHub Actions (`main-post-merge.yml`) → AWS SSM으로 EC2 명령 실행
   1. `git reset --hard HEAD && git pull origin main`

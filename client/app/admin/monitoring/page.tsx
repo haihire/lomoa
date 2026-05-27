@@ -51,7 +51,6 @@ const EMPTY_DASHBOARD: Dashboard = {
     avgDurationMs: 0,
     pageVisits: 0,
     deviceCounts: { mobile: 0, desktop: 0, tablet: 0, bot: 0 },
-    latestSystem: null,
   },
   siteClickSeries: [],
   youtubeClickSeries: [],

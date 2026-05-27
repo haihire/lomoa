@@ -10,6 +10,7 @@ import { StreamersModule } from '../streamers/streamers.module';
 import { SitesModule } from '../sites/sites.module';
 import { AdminMonitoringController } from './admin-monitoring.controller';
 import { AdminMonitoringService } from './admin-monitoring.service';
+import { DockerStatsService } from './docker-stats.service';
 import { MonitoringRepository } from './repositories/monitoring.repository';
 import { AdminAuthRepository } from './repositories/admin-auth.repository';
 import { AdminCharactersRepository } from './repositories/admin-characters.repository';
@@ -30,6 +31,7 @@ import { AdminSyncRepository } from './repositories/admin-sync.repository';
     AdminGuard,
     AdminWriteGuard,
     AdminMonitoringService,
+    DockerStatsService,
     MonitoringRepository,
     AdminAuthRepository,
     AdminCharactersRepository,

@@ -1,0 +1,190 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import {
+  MonitoringRepository,
+  ContainerName,
+  ContainerHistoryRow,
+} from './repositories/monitoring.repository';
+
+const execFileAsync = promisify(execFile);
+
+export interface ContainerStat {
+  name: string;
+  label: string;
+  cpuPercent: number;
+  memUsedMb: number;
+  memTotalMb: number;
+  memPercent: number;
+  netInMb: number;
+  netOutMb: number;
+}
+
+export interface ContainerHistoryPoint {
+  bucket: string;
+  avgCpu: number;
+  avgMem: number;
+  avgMemUsedMb: number;
+}
+
+const CONTAINER_LABELS: Record<string, string> = {
+  'daloa-nest': 'nest',
+  'daloa-nginx': 'nginx',
+  'daloa-redis': 'redis',
+  'daloa-postgres': 'postgres',
+  'local-daloa-nest': 'nest',
+  'local-daloa-redis': 'redis',
+};
+
+const VALID_CONTAINERS: ContainerName[] = [
+  'nest',
+  'nginx',
+  'redis',
+  'postgres',
+];
+
+function parseBytes(str: string): number {
+  const num = parseFloat(str);
+  if (!Number.isFinite(num)) return 0;
+  const unit = str
+    .replace(/[\d.\s]/g, '')
+    .trim()
+    .toUpperCase();
+  const map: Record<string, number> = {
+    B: 1,
+    KB: 1e3,
+    KIB: 1024,
+    MB: 1e6,
+    MIB: 1024 ** 2,
+    GB: 1e9,
+    GIB: 1024 ** 3,
+    TB: 1e12,
+    TIB: 1024 ** 4,
+  };
+  return num * (map[unit] ?? 1);
+}
+
+function toMb(bytes: number): number {
+  return Number((bytes / 1024 / 1024).toFixed(1));
+}
+
+@Injectable()
+export class DockerStatsService {
+  private readonly logger = new Logger(DockerStatsService.name);
+
+  constructor(private readonly monitoringRepo: MonitoringRepository) {}
+
+  async getContainerStats(): Promise<ContainerStat[]> {
+    try {
+      const { stdout } = await execFileAsync('docker', [
+        'stats',
+        '--no-stream',
+        '--format',
+        '{{json .}}',
+      ]);
+
+      const stats: ContainerStat[] = [];
+
+      for (const line of stdout.trim().split('\n')) {
+        if (!line.trim()) continue;
+        let raw: Record<string, string>;
+        try {
+          raw = JSON.parse(line) as Record<string, string>;
+        } catch {
+          continue;
+        }
+
+        const name = (raw['Name'] ?? raw['name'] ?? '').replace(/^\//, '');
+        const label = CONTAINER_LABELS[name];
+        if (!label) continue;
+
+        const cpuPercent = parseFloat(
+          raw['CPUPerc'] ?? raw['cpu_percent'] ?? '0',
+        );
+        const memPercent = parseFloat(
+          raw['MemPerc'] ?? raw['mem_percent'] ?? '0',
+        );
+
+        const memUsage = raw['MemUsage'] ?? raw['mem_usage'] ?? '0B / 0B';
+        const [memUsedStr, memTotalStr] = memUsage
+          .split('/')
+          .map((s) => s.trim());
+        const memUsedMb = toMb(parseBytes(memUsedStr ?? '0'));
+        const memTotalMb = toMb(parseBytes(memTotalStr ?? '0'));
+
+        const netIO = raw['NetIO'] ?? raw['net_io'] ?? '0B / 0B';
+        const [netInStr, netOutStr] = netIO.split('/').map((s) => s.trim());
+        const netInMb = toMb(parseBytes(netInStr ?? '0'));
+        const netOutMb = toMb(parseBytes(netOutStr ?? '0'));
+
+        stats.push({
+          name,
+          label,
+          cpuPercent: Number.isFinite(cpuPercent) ? cpuPercent : 0,
+          memUsedMb,
+          memTotalMb,
+          memPercent: Number.isFinite(memPercent) ? memPercent : 0,
+          netInMb,
+          netOutMb,
+        });
+      }
+
+      return stats;
+    } catch (err: unknown) {
+      this.logger.warn(
+        `docker stats failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return [];
+    }
+  }
+
+  @Cron('0 */5 * * * *')
+  async saveContainerStats(): Promise<void> {
+    try {
+      const stats = await this.getContainerStats();
+      for (const stat of stats) {
+        const container = stat.label as ContainerName;
+        if (!VALID_CONTAINERS.includes(container)) continue;
+        await this.monitoringRepo.saveDockerMetric(container, {
+          cpuPercent: stat.cpuPercent,
+          memUsedMb: stat.memUsedMb,
+          memTotalMb: stat.memTotalMb,
+          memPercent: stat.memPercent,
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(
+        `docker stats save failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  @Cron('0 30 3 * * *')
+  async cleanupContainerMetrics(): Promise<void> {
+    try {
+      for (const container of VALID_CONTAINERS) {
+        await this.monitoringRepo.deleteDockerMetricsOlderThan(container, 9);
+      }
+    } catch (err: unknown) {
+      this.logger.warn(
+        `docker metrics cleanup failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  async getContainerHistory(
+    container: string,
+  ): Promise<ContainerHistoryPoint[]> {
+    const safe = VALID_CONTAINERS.includes(container as ContainerName)
+      ? (container as ContainerName)
+      : 'nest';
+    const rows = await this.monitoringRepo.findDockerMetricSeries(safe, 7);
+    return rows.map((row: ContainerHistoryRow) => ({
+      bucket: row.bucket,
+      avgCpu: Number(row.avg_cpu),
+      avgMem: Number(row.avg_mem),
+      avgMemUsedMb: Number(row.avg_mem_used_mb),
+    }));
+  }
+}

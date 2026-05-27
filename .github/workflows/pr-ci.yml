@@ -151,10 +151,6 @@ jobs:
         working-directory: server
         run: npm ci
 
-      - name: Seed test database
-        run: |
-          psql "postgresql://testuser:testpass@127.0.0.1:5432/lost_ark" -f scripts/init-db.sql
-
       - name: Run server E2E
         working-directory: server
         run: npm run test:e2e

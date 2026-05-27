@@ -571,10 +571,10 @@ export default function AdminSitesPage() {
                 </tr>
               </thead>
               <tbody>
-                {sites.map((site) => (
+                {sites.map((site, idx) => (
                   <tr key={site.seq}>
                     <td className="text-center text-[color:var(--admin-text-subtle)] tabular-nums">
-                      {site.seq}
+                      {idx + 1}
                     </td>
                     <td className="font-medium">{site.name}</td>
                     <td>

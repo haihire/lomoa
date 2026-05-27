@@ -181,9 +181,7 @@ daloa/
 │   ├── test.ps1                  # 전체 테스트 실행
 │   ├── cleanup-logs.ps1          # 30일 이상 로그 자동 삭제
 │   ├── deploy.ps1                # 레거시 EC2 배포 스크립트 (현재 GitHub Actions 사용)
-│   ├── init-db.sql               # DB 스키마 초기화 (PostgreSQL)
 │   ├── dump-db.js                # DB 덤프 스크립트
-│   ├── migrate-apm-data.sh       # APM 데이터 MySQL → PostgreSQL 마이그레이션 (완료)
 │   └── migrate-mysql-to-postgres.sh # MySQL → PostgreSQL 마이그레이션 (완료)
 │
 ├── context/                      # ── AI 컨텍스트 문서 ──

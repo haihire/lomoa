@@ -1,34 +1,15 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import * as os from 'os';
 import {
   type DeviceType,
   type VisitRow,
   MonitoringRepository,
 } from './repositories/monitoring.repository';
 
-export interface CurrentSystemSnapshot {
-  at: string;
-  cpuPercent: number;
-  memoryPercent: number;
-  rssMb: number;
-  heapUsedMb: number;
-  heapTotalMb: number;
-  totalMemMb: number;
-  loadAvg1m: number;
-}
-
 export interface AdminMonitoringDashboard {
   summary: {
     windowMinutes: number;
-    totalRequests: number;
-    errorCount: number;
-    errorRate: number;
-    slowCount: number;
-    slowThresholdMs: number;
     avgDurationMs: number;
-    p95DurationMs: number;
-    p99DurationMs: number;
     pageVisits: number;
     deviceCounts: {
       mobile: number;
@@ -36,20 +17,7 @@ export interface AdminMonitoringDashboard {
       tablet: number;
       bot: number;
     };
-    latestSystem: {
-      created_at: string;
-      cpu_percent: number;
-      memory_percent: number;
-      rss_mb: number;
-      heap_used_mb: number;
-      total_mem_mb: number;
-    } | null;
   };
-  requestSeries: Array<{
-    minute: string;
-    avgDurationMs: number;
-    count: number;
-  }>;
   siteClickSeries: Array<{ minute: string; count: number }>;
   youtubeClickSeries: Array<{ minute: string; count: number }>;
   sectionSeries: Array<{
@@ -62,54 +30,20 @@ export interface AdminMonitoringDashboard {
   countryVisits: Array<{ countryCode: string; count: number }>;
   osVisits: Array<{ osName: string; count: number }>;
   browserVisits: Array<{ browserName: string; count: number }>;
-  systemSeries: Array<{
-    at: string;
-    cpuPercent: number;
-    memoryPercent: number;
-    rssMb: number;
-    heapUsedMb: number;
-    totalMemMb: number;
-  }>;
-  slowRequests: Array<{
-    path: string;
-    method: string;
-    status_code: number;
-    duration_ms: number;
-    created_at: string;
-  }>;
-  apiStats: Array<{
-    path: string;
-    method: string;
-    requestCount: number;
-    avgDurationMs: number;
-    level: 'low' | 'near' | 'high';
-    levelLabel: 'low' | 'near' | 'high';
-  }>;
-  probeStats: Array<{
-    apiKey: string;
-    path: string;
-    method: string;
-    cacheType: 'redis' | 'no-cache';
-    requestCount: number;
-    avgDurationMs: number;
-    maxDurationMs: number;
-    lastDurationMs: number;
-    lastStatusCode: number;
-    lastSuccess: boolean;
-  }>;
   siteClicks: Array<{
     siteName: string;
     siteHref: string;
     siteCategory: string;
     clickCount: number;
   }>;
+  pageVisitSeries: Array<{ day: string; count: number }>;
+  youtubeClickTotal: number;
 }
 
 @Injectable()
 export class AdminMonitoringService implements OnModuleInit {
   private readonly logger = new Logger(AdminMonitoringService.name);
   private readonly SLOW_THRESHOLD_MS = 1200;
-  private readonly SYSTEM_METRIC_RETENTION_DAYS = 7;
   private readonly MONITORING_METRIC_RETENTION_DAYS = 30;
   private readonly probeTargets: Array<{
     apiKey: string;
@@ -136,14 +70,10 @@ export class AdminMonitoringService implements OnModuleInit {
       cacheType: 'redis',
     },
   ];
-  private lastCpuUsage = process.cpuUsage();
-  private lastSampleAt = Date.now();
-
   constructor(private readonly monitoringRepo: MonitoringRepository) {}
 
   async onModuleInit() {
     await this.monitoringRepo.ensureMonitoringTables();
-    await this.recordSystemSnapshot();
   }
 
   async recordRequest(input: {
@@ -187,92 +117,6 @@ export class AdminMonitoringService implements OnModuleInit {
     await this.monitoringRepo.recordYoutubeClick(input);
   }
 
-  async recordSystemSnapshot() {
-    const snapshot = this.buildSystemSnapshot();
-    this.lastCpuUsage = snapshot.cpuNow;
-    this.lastSampleAt = snapshot.now;
-    await this.monitoringRepo.recordSystemMetric({
-      cpuPercent: Number(snapshot.cpuPercent.toFixed(1)),
-      memoryPercent: Number(snapshot.memoryPercent.toFixed(1)),
-      rssMb: snapshot.rssMb,
-      heapUsedMb: snapshot.heapUsedMb,
-      totalMemMb: snapshot.totalMemMb,
-      loadAvg1m: Number(snapshot.loadAvg1m.toFixed(2)),
-    });
-  }
-
-  async getCurrentSystemSnapshot(): Promise<CurrentSystemSnapshot> {
-    const latest = await this.monitoringRepo.findLatestSystemMetric();
-
-    if (latest) {
-      return {
-        at: latest.created_at.toISOString(),
-        cpuPercent: Number(latest.cpu_percent),
-        memoryPercent: Number(latest.memory_percent),
-        rssMb: latest.rss_mb,
-        heapUsedMb: latest.heap_used_mb,
-        heapTotalMb: 0,
-        totalMemMb: latest.total_mem_mb,
-        loadAvg1m: Number(latest.load_avg_1m),
-      };
-    }
-
-    const snapshot = this.buildSystemSnapshot();
-    return {
-      at: new Date(snapshot.now).toISOString(),
-      cpuPercent: Number(snapshot.cpuPercent.toFixed(1)),
-      memoryPercent: Number(snapshot.memoryPercent.toFixed(1)),
-      rssMb: snapshot.rssMb,
-      heapUsedMb: snapshot.heapUsedMb,
-      heapTotalMb: snapshot.heapTotalMb,
-      totalMemMb: snapshot.totalMemMb,
-      loadAvg1m: Number(snapshot.loadAvg1m.toFixed(2)),
-    };
-  }
-
-  private buildSystemSnapshot() {
-    const now = Date.now();
-    const elapsedMs = Math.max(1, now - this.lastSampleAt);
-    const cpuNow = process.cpuUsage();
-    const cpuDeltaUs =
-      cpuNow.user -
-      this.lastCpuUsage.user +
-      (cpuNow.system - this.lastCpuUsage.system);
-    // Use process CPU utilization over elapsed wall time.
-    // This is more intuitive for app monitoring than dividing by host core count.
-    const cpuPercent = Math.min(
-      100,
-      Math.max(0, (cpuDeltaUs / 1000 / elapsedMs) * 100),
-    );
-    const mem = process.memoryUsage();
-    const totalMemMb = Math.round(os.totalmem() / 1024 / 1024);
-    const rssMb = Math.round(mem.rss / 1024 / 1024);
-    const heapUsedMb = Math.round(mem.heapUsed / 1024 / 1024);
-    const heapTotalMb = Math.round(mem.heapTotal / 1024 / 1024);
-    const memoryPercent = totalMemMb
-      ? Math.min(100, Math.max(0, (rssMb / totalMemMb) * 100))
-      : 0;
-    const loadAvg1m = os.loadavg()[0] ?? 0;
-    return {
-      now,
-      cpuNow,
-      cpuPercent,
-      memoryPercent,
-      rssMb,
-      heapUsedMb,
-      heapTotalMb,
-      totalMemMb,
-      loadAvg1m,
-    };
-  }
-
-  @Cron('*/5 * * * * *')
-  async sampleSystem() {
-    await this.recordSystemSnapshot().catch((err: unknown) =>
-      this.logger.warn(`system sample failed: ${toErrorMessage(err)}`),
-    );
-  }
-
   @Cron('0 */10 * * * *')
   async probeApis() {
     const base =
@@ -312,10 +156,6 @@ export class AdminMonitoringService implements OnModuleInit {
   @Cron('0 0 3 * * *')
   async cleanupMetricRetention() {
     try {
-      const deletedSystem = await this.monitoringRepo.deleteMetricRowsOlderThan(
-        'apm_system_metrics',
-        this.SYSTEM_METRIC_RETENTION_DAYS,
-      );
       const deletedRequests =
         await this.monitoringRepo.deleteMetricRowsOlderThan(
           'apm_request_timings',
@@ -327,7 +167,7 @@ export class AdminMonitoringService implements OnModuleInit {
       );
 
       this.logger.log(
-        `monitoring retention cleanup completed: system=${deletedSystem}, requests=${deletedRequests}, probes=${deletedProbes}`,
+        `monitoring retention cleanup completed: requests=${deletedRequests}, probes=${deletedProbes}`,
       );
     } catch (err: unknown) {
       this.logger.warn(
@@ -336,7 +176,10 @@ export class AdminMonitoringService implements OnModuleInit {
     }
   }
 
-  async getDashboard(rangeDays = 7): Promise<AdminMonitoringDashboard> {
+  async getDashboard(
+    rangeDays = 7,
+    pvDays = 14,
+  ): Promise<AdminMonitoringDashboard> {
     const safeRangeDays = Math.max(1, Math.min(30, Math.trunc(rangeDays)));
     const bucketHours =
       safeRangeDays === 1
@@ -345,17 +188,12 @@ export class AdminMonitoringService implements OnModuleInit {
           ? 3
           : safeRangeDays === 7
             ? 7
-            : 30;
+            : safeRangeDays === 10
+              ? 12
+              : 30;
     const summary = await this.monitoringRepo.findSummary(
       this.SLOW_THRESHOLD_MS,
     );
-
-    const durationRows = await this.monitoringRepo.findRecentDurations();
-    const durations = durationRows.map((r) => r.duration_ms);
-    const p95DurationMs = this.percentileFromSorted(durations, 0.95);
-    const p99DurationMs = this.percentileFromSorted(durations, 0.99);
-
-    const requestSeries = await this.monitoringRepo.findRequestSeries();
 
     const siteClickSeriesRows =
       await this.monitoringRepo.findSiteClickSeriesDays(14);
@@ -373,50 +211,17 @@ export class AdminMonitoringService implements OnModuleInit {
     const osRows = await this.monitoringRepo.findOsVisits();
     const browserRows = await this.monitoringRepo.findBrowserVisits();
 
-    const systemRows = await this.monitoringRepo.findSystemSeriesSince(
-      new Date(Date.now() - 60 * 60 * 1000),
-    );
-
-    const slowRows = await this.monitoringRepo.findSlowRequests(
-      this.SLOW_THRESHOLD_MS,
-    );
-
-    const latestSystemRow = await this.monitoringRepo.findLatestSystemMetric();
-
-    const apiRows = await this.monitoringRepo.findApiStats();
-    const probeRows = await this.monitoringRepo.findProbeStats();
     const siteClickRows = await this.monitoringRepo.findSiteClicks();
-
-    const latestSystem = latestSystemRow
-      ? {
-          created_at: latestSystemRow.created_at.toISOString(),
-          cpu_percent: Number(latestSystemRow.cpu_percent),
-          memory_percent: Number(latestSystemRow.memory_percent),
-          rss_mb: latestSystemRow.rss_mb,
-          heap_used_mb: latestSystemRow.heap_used_mb,
-          total_mem_mb: latestSystemRow.total_mem_mb,
-        }
-      : null;
+    const safePvDays = Math.max(1, Math.min(30, Math.trunc(pvDays)));
+    const [pageVisitSeriesRows, youtubeClickTotal] = await Promise.all([
+      this.monitoringRepo.findPageVisitSeriesDays(safePvDays),
+      this.monitoringRepo.findYoutubeClickTotal(),
+    ]);
 
     return {
       summary: {
         windowMinutes: 60,
-        totalRequests: Number(summary?.total_requests ?? 0),
-        errorCount: Number(summary?.error_count ?? 0),
-        errorRate:
-          summary && Number(summary.total_requests) > 0
-            ? Number(
-                (
-                  Number(summary.error_count ?? 0) /
-                  Number(summary.total_requests)
-                ).toFixed(3),
-              )
-            : 0,
-        slowCount: Number(summary?.slow_count ?? 0),
-        slowThresholdMs: this.SLOW_THRESHOLD_MS,
         avgDurationMs: summary?.avg_duration_ms ?? 0,
-        p95DurationMs,
-        p99DurationMs,
         pageVisits: Number(summary?.page_visits ?? 0),
         deviceCounts: {
           mobile: Number(summary?.mobile_visits ?? 0),
@@ -424,13 +229,7 @@ export class AdminMonitoringService implements OnModuleInit {
           tablet: Number(summary?.tablet_visits ?? 0),
           bot: Number(summary?.bot_visits ?? 0),
         },
-        latestSystem,
       },
-      requestSeries: requestSeries.map((row) => ({
-        minute: row.bucket,
-        avgDurationMs: row.avg_duration_ms ?? 0,
-        count: Number(row.count),
-      })),
       siteClickSeries: siteClickSeriesRows.map((row) => ({
         minute: row.bucket,
         count: Number(row.count),
@@ -461,62 +260,18 @@ export class AdminMonitoringService implements OnModuleInit {
         browserName: row.name || 'Unknown',
         count: Number(row.count),
       })),
-      systemSeries: systemRows.map((row) => ({
-        at: row.created_at.toISOString(),
-        cpuPercent: Number(row.cpu_percent),
-        memoryPercent: Number(row.memory_percent),
-        rssMb: row.rss_mb,
-        heapUsedMb: row.heap_used_mb,
-        totalMemMb: row.total_mem_mb,
-      })),
-      slowRequests: slowRows.map((row) => ({
-        path: row.path ?? '',
-        method: row.method ?? '',
-        status_code: row.status_code ?? 0,
-        duration_ms: row.duration_ms,
-        created_at: row.created_at.toISOString(),
-      })),
-      apiStats: apiRows.map((row) => {
-        const avg = row.avg_duration_ms ?? 0;
-        const level: 'low' | 'near' | 'high' =
-          avg >= 800 ? 'high' : avg >= 300 ? 'near' : 'low';
-        return {
-          path: row.path,
-          method: row.method,
-          requestCount: Number(row.request_count),
-          avgDurationMs: avg,
-          level,
-          levelLabel: level,
-        };
-      }),
-      probeStats: probeRows.map((row) => ({
-        apiKey: row.api_key,
-        path: row.path,
-        method: row.method,
-        cacheType: row.cache_type,
-        requestCount: Number(row.request_count),
-        avgDurationMs: row.avg_duration_ms ?? 0,
-        maxDurationMs: row.max_duration_ms ?? 0,
-        lastDurationMs: Number(row.last_duration_ms ?? 0),
-        lastStatusCode: Number(row.last_status_code ?? 0),
-        lastSuccess: Boolean(row.last_success),
-      })),
       siteClicks: siteClickRows.map((row) => ({
         siteName: row.site_name,
         siteHref: row.site_href,
         siteCategory: row.site_category,
         clickCount: Number(row.click_count),
       })),
+      pageVisitSeries: pageVisitSeriesRows.map((row) => ({
+        day: row.bucket,
+        count: Number(row.count),
+      })),
+      youtubeClickTotal,
     };
-  }
-
-  private percentileFromSorted(values: number[], p: number): number {
-    if (values.length === 0) return 0;
-    const index = Math.min(
-      values.length - 1,
-      Math.max(0, Math.ceil(values.length * p) - 1),
-    );
-    return values[index] ?? 0;
   }
 }
 

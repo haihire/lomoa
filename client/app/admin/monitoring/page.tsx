@@ -164,11 +164,14 @@ export default function MonitoringPage() {
       try {
         const res = await fetch("/api/admin/monitoring/containers", { cache: "no-store" });
         if (!alive || !res.ok) return;
-        const json = (await res.json()) as { containers: ContainerStat[]; disk: DiskUsage | null };
-        containersCache = json.containers;
-        diskCache = json.disk;
-        setContainers(json.containers);
-        setDisk(json.disk);
+        const raw = (await res.json()) as ContainerStat[] | { containers: ContainerStat[]; disk: DiskUsage | null };
+        const parsed = Array.isArray(raw)
+          ? { containers: raw, disk: null }
+          : { containers: raw.containers ?? [], disk: raw.disk ?? null };
+        containersCache = parsed.containers;
+        diskCache = parsed.disk;
+        setContainers(parsed.containers);
+        setDisk(parsed.disk);
       } catch {
         // keep previous
       } finally {

@@ -89,6 +89,8 @@ function toFixedHundred<T extends { count: number }>(
 }
 
 let monitoringCache: Dashboard | null = null;
+let containersCache: ContainerStat[] | null = null;
+const containerHistoryCache: Record<string, ContainerHistoryPoint[]> = {};
 
 export default function MonitoringPage() {
   const [data, setData] = useState<Dashboard>(monitoringCache ?? EMPTY_DASHBOARD);
@@ -98,7 +100,8 @@ export default function MonitoringPage() {
   const [activeChart, setActiveChart] = useState<string | null>(null);
   const [pageVisitDays, setPageVisitDays] = useState<7 | 30>(7);
   const [sectionTab, setSectionTab] = useState<"sites" | "stat-builds" | "youtube">("sites");
-  const [containers, setContainers] = useState<ContainerStat[]>([]);
+  const [containers, setContainers] = useState<ContainerStat[]>(containersCache ?? []);
+  const [containersLoading, setContainersLoading] = useState(containersCache === null);
   const [containerTab, setContainerTab] = useState<string>("전체");
   const [containerHistory, setContainerHistory] = useState<ContainerHistoryPoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -153,9 +156,13 @@ export default function MonitoringPage() {
       try {
         const res = await fetch("/api/admin/monitoring/containers", { cache: "no-store" });
         if (!alive || !res.ok) return;
-        setContainers((await res.json()) as ContainerStat[]);
+        const data = (await res.json()) as ContainerStat[];
+        containersCache = data;
+        setContainers(data);
       } catch {
         // keep previous
+      } finally {
+        if (alive) setContainersLoading(false);
       }
     }
     void loadContainers();
@@ -169,8 +176,13 @@ export default function MonitoringPage() {
       return;
     }
     let alive = true;
-    setHistoryLoading(true);
-    setContainerHistory([]);
+    const cached = containerHistoryCache[containerTab];
+    if (cached) {
+      setContainerHistory(cached);
+    } else {
+      setHistoryLoading(true);
+      setContainerHistory([]);
+    }
     async function loadHistory() {
       try {
         const res = await fetch(
@@ -178,7 +190,9 @@ export default function MonitoringPage() {
           { cache: "no-store" },
         );
         if (!alive || !res.ok) return;
-        setContainerHistory((await res.json()) as ContainerHistoryPoint[]);
+        const data = (await res.json()) as ContainerHistoryPoint[];
+        containerHistoryCache[containerTab] = data;
+        setContainerHistory(data);
       } catch {
         // keep previous
       } finally {
@@ -325,7 +339,9 @@ export default function MonitoringPage() {
           </div>
 
           {containerTab === "전체" ? (
-            containers.length === 0 ? (
+            containersLoading ? (
+              <p className="text-xs text-[color:var(--admin-text-muted)]">불러오는 중...</p>
+            ) : containers.length === 0 ? (
               <p className="text-xs text-[color:var(--admin-text-muted)]">컨테이너 데이터 없음 (EC2 환경에서만 표시됩니다)</p>
             ) : (
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">

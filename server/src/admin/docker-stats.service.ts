@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { execFile } from 'child_process';
+import { readFile } from 'fs/promises';
 import { promisify } from 'util';
 import {
   MonitoringRepository,
@@ -19,8 +20,16 @@ export interface ContainerStat {
   memPercent: number;
   netInMb: number;
   netOutMb: number;
-  blockReadMb: number;
-  blockWriteMb: number;
+}
+
+export interface HostStats {
+  cpuPercent: number;
+  memUsedMb: number;
+  memTotalMb: number;
+  memPercent: number;
+  diskUsedGb: number;
+  diskTotalGb: number;
+  diskPercent: number;
 }
 
 export interface ContainerHistoryPoint {
@@ -119,11 +128,6 @@ export class DockerStatsService {
         const netInMb = toMb(parseBytes(netInStr ?? '0'));
         const netOutMb = toMb(parseBytes(netOutStr ?? '0'));
 
-        const blockIO = raw['BlockIO'] ?? raw['block_io'] ?? '0B / 0B';
-        const [blockReadStr, blockWriteStr] = blockIO.split('/').map((s) => s.trim());
-        const blockReadMb = toMb(parseBytes(blockReadStr ?? '0'));
-        const blockWriteMb = toMb(parseBytes(blockWriteStr ?? '0'));
-
         stats.push({
           name,
           label,
@@ -133,8 +137,6 @@ export class DockerStatsService {
           memPercent: Number.isFinite(memPercent) ? memPercent : 0,
           netInMb,
           netOutMb,
-          blockReadMb,
-          blockWriteMb,
         });
       }
 
@@ -181,7 +183,68 @@ export class DockerStatsService {
     }
   }
 
-  async getDiskUsage(): Promise<{ usedGb: number; totalGb: number; percent: number } | null> {
+  async getHostStats(): Promise<HostStats | null> {
+    try {
+      const [mem, cpuPercent, disk] = await Promise.all([
+        this.readHostMemory(),
+        this.readHostCpu(),
+        this.readDiskUsage(),
+      ]);
+      if (!mem || !disk) return null;
+      return {
+        cpuPercent: cpuPercent ?? 0,
+        memUsedMb: mem.usedMb,
+        memTotalMb: mem.totalMb,
+        memPercent: mem.percent,
+        diskUsedGb: disk.usedGb,
+        diskTotalGb: disk.totalGb,
+        diskPercent: disk.percent,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async readHostMemory(): Promise<{ usedMb: number; totalMb: number; percent: number } | null> {
+    try {
+      const text = await readFile('/proc/meminfo', 'utf8');
+      const totalKb = Number(/MemTotal:\s+(\d+)/.exec(text)?.[1] ?? 0);
+      const availKb = Number(/MemAvailable:\s+(\d+)/.exec(text)?.[1] ?? 0);
+      if (totalKb <= 0) return null;
+      const usedKb = totalKb - availKb;
+      return {
+        totalMb: Math.round(totalKb / 1024),
+        usedMb: Math.round(usedKb / 1024),
+        percent: Number(((usedKb / totalKb) * 100).toFixed(1)),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async readHostCpu(): Promise<number | null> {
+    try {
+      const sample = async () => {
+        const text = await readFile('/proc/stat', 'utf8');
+        const line = text.split('\n')[0];
+        const parts = line.trim().split(/\s+/).slice(1).map(Number);
+        const idle = (parts[3] ?? 0) + (parts[4] ?? 0);
+        const total = parts.reduce((a, b) => a + b, 0);
+        return { idle, total };
+      };
+      const a = await sample();
+      await new Promise((r) => setTimeout(r, 200));
+      const b = await sample();
+      const idleDelta = b.idle - a.idle;
+      const totalDelta = b.total - a.total;
+      if (totalDelta <= 0) return null;
+      return Number((100 * (1 - idleDelta / totalDelta)).toFixed(1));
+    } catch {
+      return null;
+    }
+  }
+
+  private async readDiskUsage(): Promise<{ usedGb: number; totalGb: number; percent: number } | null> {
     try {
       const { stdout } = await execFileAsync('df', ['/'], { timeout: 5000 });
       const lines = stdout.trim().split('\n');

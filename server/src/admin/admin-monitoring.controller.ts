@@ -46,11 +46,11 @@ export class AdminMonitoringController {
   @UseGuards(AdminGuard)
   @Get('admin/monitoring/containers')
   async containers() {
-    const [containers, disk] = await Promise.all([
+    const [containers, host] = await Promise.all([
       this.dockerStats.getContainerStats(),
-      this.dockerStats.getDiskUsage(),
+      this.dockerStats.getHostStats(),
     ]);
-    return { containers, disk };
+    return { containers, host };
   }
 
   @UseGuards(AdminGuard)

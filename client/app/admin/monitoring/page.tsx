@@ -231,6 +231,20 @@ export default function MonitoringPage() {
 
   const siteClickTotal = useMemo(() => data.siteClicks.reduce((sum, item) => sum + item.clickCount, 0), [data.siteClicks]);
 
+  const containerTotals = useMemo(() => {
+    if (containers.length === 0) return null;
+    const totalMb = containers[0].memTotalMb;
+    const totalUsedMb = containers.reduce((s, c) => s + c.memUsedMb, 0);
+    return {
+      totalMb,
+      totalUsedMb,
+      totalCpu: containers.reduce((s, c) => s + c.cpuPercent, 0),
+      totalNetIn: containers.reduce((s, c) => s + c.netInMb, 0),
+      totalNetOut: containers.reduce((s, c) => s + c.netOutMb, 0),
+      totalMemPct: totalMb > 0 ? (totalUsedMb / totalMb) * 100 : 0,
+    };
+  }, [containers]);
+
   const deviceSummary = useMemo(() => {
     const summaryCounts = data.summary.deviceCounts;
     if (summaryCounts) {
@@ -344,17 +358,33 @@ export default function MonitoringPage() {
             ) : containers.length === 0 ? (
               <p className="text-xs text-[color:var(--admin-text-muted)]">컨테이너 데이터 없음 (EC2 환경에서만 표시됩니다)</p>
             ) : (
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
                 {containers.map((c) => (
                   <div key={c.name} className="rounded border border-[color:var(--admin-border)] p-2.5">
                     <p className="mb-1.5 text-xs font-semibold">{c.label}</p>
                     <div className="space-y-0.5 text-xs text-[color:var(--admin-text-muted)]">
                       <p>CPU <span className="font-medium text-[color:var(--admin-text)]">{c.cpuPercent.toFixed(1)}%</span></p>
-                      <p>메모리 <span className="font-medium text-[color:var(--admin-text)]">{c.memUsedMb}MB</span> ({c.memPercent.toFixed(1)}%)</p>
+                      <p>
+                        메모리 <span className="font-medium text-[color:var(--admin-text)]">{c.memUsedMb}MB</span>
+                        <span className="ml-1">({c.memPercent.toFixed(1)}% / {c.memTotalMb}MB)</span>
+                      </p>
                       <p>↓{c.netInMb}MB · ↑{c.netOutMb}MB</p>
                     </div>
                   </div>
                 ))}
+                {containerTotals && (
+                  <div className="rounded border border-[color:var(--admin-border)] bg-slate-50 p-2.5">
+                    <p className="mb-1.5 text-xs font-semibold text-[color:var(--admin-text)]">통합</p>
+                    <div className="space-y-0.5 text-xs text-[color:var(--admin-text-muted)]">
+                      <p>CPU <span className="font-medium text-[color:var(--admin-text)]">{containerTotals.totalCpu.toFixed(1)}%</span></p>
+                      <p>
+                        메모리 <span className="font-medium text-[color:var(--admin-text)]">{containerTotals.totalUsedMb.toFixed(0)}MB</span>
+                        <span className="ml-1">({containerTotals.totalMemPct.toFixed(1)}% / {containerTotals.totalMb}MB)</span>
+                      </p>
+                      <p>↓{containerTotals.totalNetIn.toFixed(1)}MB · ↑{containerTotals.totalNetOut.toFixed(1)}MB</p>
+                    </div>
+                  </div>
+                )}
               </div>
             )
           ) : (

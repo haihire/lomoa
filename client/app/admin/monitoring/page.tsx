@@ -148,7 +148,6 @@ export default function MonitoringPage() {
             ...base,
             sectionSeries: prev.sectionSeries,
             pageVisitSeries: prev.pageVisitSeries ?? base.pageVisitSeries,
-            youtubeClickTotal: prev.youtubeClickTotal ?? base.youtubeClickTotal,
           };
         });
         hasLoadedRef.current = true;

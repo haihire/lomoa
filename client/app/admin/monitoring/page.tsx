@@ -12,6 +12,8 @@ interface ContainerStat {
   memPercent: number;
   netInMb: number;
   netOutMb: number;
+  blockReadMb: number;
+  blockWriteMb: number;
 }
 
 interface DiskUsage {
@@ -381,7 +383,8 @@ export default function MonitoringPage() {
                         메모리 <span className="font-medium text-[color:var(--admin-text)]">{c.memPercent.toFixed(1)}%</span>
                         <span className="ml-1">({c.memUsedMb}MB / {c.memTotalMb}MB)</span>
                       </p>
-                      <p>↓{c.netInMb}MB · ↑{c.netOutMb}MB</p>
+                      <p>NET ↓{c.netInMb}MB · ↑{c.netOutMb}MB</p>
+                      <p>I/O R{c.blockReadMb}MB · W{c.blockWriteMb}MB</p>
                     </div>
                   </div>
                 ))}

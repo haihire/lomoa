@@ -19,6 +19,8 @@ export interface ContainerStat {
   memPercent: number;
   netInMb: number;
   netOutMb: number;
+  blockReadMb: number;
+  blockWriteMb: number;
 }
 
 export interface ContainerHistoryPoint {
@@ -117,6 +119,11 @@ export class DockerStatsService {
         const netInMb = toMb(parseBytes(netInStr ?? '0'));
         const netOutMb = toMb(parseBytes(netOutStr ?? '0'));
 
+        const blockIO = raw['BlockIO'] ?? raw['block_io'] ?? '0B / 0B';
+        const [blockReadStr, blockWriteStr] = blockIO.split('/').map((s) => s.trim());
+        const blockReadMb = toMb(parseBytes(blockReadStr ?? '0'));
+        const blockWriteMb = toMb(parseBytes(blockWriteStr ?? '0'));
+
         stats.push({
           name,
           label,
@@ -126,6 +133,8 @@ export class DockerStatsService {
           memPercent: Number.isFinite(memPercent) ? memPercent : 0,
           netInMb,
           netOutMb,
+          blockReadMb,
+          blockWriteMb,
         });
       }
 

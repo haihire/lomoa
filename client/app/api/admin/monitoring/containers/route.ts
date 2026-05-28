@@ -7,16 +7,13 @@ export async function GET() {
   const store = await cookies();
   const token = store.get("admin_token")?.value ?? "";
   try {
-    const res = await fetch(`${NEST_API}/api/admin/monitoring/system/current`, {
+    const res = await fetch(`${NEST_API}/api/admin/monitoring/containers`, {
       headers: { "x-admin-session": token },
       cache: "no-store",
     });
-    const data = await res.json().catch(() => ({}));
+    const data = await res.json().catch(() => ({ containers: [], host: null }));
     return NextResponse.json(data, { status: res.status });
   } catch {
-    return NextResponse.json(
-      { message: "monitoring upstream unavailable" },
-      { status: 503 },
-    );
+    return NextResponse.json({ containers: [], host: null }, { status: 503 });
   }
 }

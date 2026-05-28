@@ -64,10 +64,6 @@ powershell -File scripts/deploy.ps1 -FlushRedis
 
 ### SQL
 
-- `init-db.sql`
-  - 역할: 로컬 DB 초기화(테이블 생성 + 초기 데이터 일부 삽입)
-  - 용도: 초기 세팅할 때 1회 실행
-
 - `sync-sites.sql`
   - 역할: `loa_sites`를 기준 목록(`desired_sites`)과 강제 동기화
   - 특징: 기준에 없는 사이트는 DELETE 됨
@@ -105,7 +101,6 @@ powershell -File scripts/deploy.ps1 -FlushRedis
   1. `seed_sites.mjs` 수정
   2. `seed-sites.ps1` 실행
   3. Redis 키 `sites:all` 삭제
-- DB를 새로 구성: `init-db.sql`
 - 사이트 목록을 기준 목록과 완전 일치: `sync-sites.sql`
 
 ## 참고

@@ -9,14 +9,13 @@
 
 - Docker
 - TypeScript: 타입 안정성으로 런타임 에러 사전 방지
-- Next.js: SSR
-- NestJS: 개발 편의성
-- MariaDB: 개발 편의성
+- Next.js: SSR (Vercel 배포)
+- NestJS: 백엔드 API 서버
+- PostgreSQL: 주 데이터베이스
+- Prisma 7: ORM (driver adapter 방식)
 - Redis: 캐시로 속도 개선
-- Nginx: 라우팅
-- Vercel: 무료 비용
-- AWS EC2 + Nginx
-- Git Action
+- Nginx: 리버스 프록시
+- AWS EC2 + GitHub Actions: 서버 배포 자동화
 
 ## 개선한 점들
 
@@ -25,6 +24,8 @@
 | 초기 로딩 시간 | 4.2s   | 1.1s    | 73% ↓  |
 | DB 응답 시간   | 500ms  | 50ms    | 90% ↓  |
 | 동시 요청 처리 | 50 QPS | 500 QPS | 10배 ↑ |
+
+→ 상세 기록: [docs/performance.md](docs/performance.md)
 
 ## 시스템 흐름:
 
@@ -39,10 +40,6 @@
 - main
 - fix/admin
 - feat/admin
-- fix/sites
-- feat/sites
-- fix/youtube
-- feat/youtube
-- fix/build-stats
-- feat/build-stats
+- fix/mainPage
+- feat/mainPage
 - chore/docs

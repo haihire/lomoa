@@ -14,6 +14,7 @@ import {
 import type { Request } from 'express';
 import { AdminGuard } from './admin.guard';
 import { AdminMonitoringService } from './admin-monitoring.service';
+import { DockerStatsService } from './docker-stats.service';
 
 @Controller('api')
 export class AdminMonitoringController {
@@ -23,32 +24,39 @@ export class AdminMonitoringController {
   private telemetryWindowStartedAt = Date.now();
   private telemetryWindowCount = 0;
 
-  constructor(private readonly monitoring: AdminMonitoringService) {}
+  constructor(
+    private readonly monitoring: AdminMonitoringService,
+    private readonly dockerStats: DockerStatsService,
+  ) {}
 
   @UseGuards(AdminGuard)
   @Get('admin/monitoring/dashboard')
-  dashboard(@Query('days') days?: string) {
+  dashboard(@Query('days') days?: string, @Query('pvDays') pvDays?: string) {
     const parsed = Number(days);
     const rangeDays = Number.isFinite(parsed)
       ? Math.max(1, Math.min(30, Math.trunc(parsed)))
       : 7;
-    return this.monitoring.getDashboard(rangeDays);
+    const parsedPv = Number(pvDays);
+    const pageVisitDays = Number.isFinite(parsedPv)
+      ? Math.max(1, Math.min(30, Math.trunc(parsedPv)))
+      : 14;
+    return this.monitoring.getDashboard(rangeDays, pageVisitDays);
   }
 
   @UseGuards(AdminGuard)
-  @Get('admin/monitoring/system/current')
-  async currentSystem() {
-    const current = await this.monitoring.getCurrentSystemSnapshot();
-    return {
-      created_at: current.at,
-      cpu_percent: current.cpuPercent,
-      memory_percent: current.memoryPercent,
-      rss_mb: current.rssMb,
-      heap_used_mb: current.heapUsedMb,
-      heap_total_mb: current.heapTotalMb,
-      total_mem_mb: current.totalMemMb,
-      load_avg_1m: current.loadAvg1m,
-    };
+  @Get('admin/monitoring/containers')
+  async containers() {
+    const [containers, host] = await Promise.all([
+      this.dockerStats.getContainerStats(),
+      this.dockerStats.getHostStats(),
+    ]);
+    return { containers, host };
+  }
+
+  @UseGuards(AdminGuard)
+  @Get('admin/monitoring/container-history')
+  containerHistory(@Query('container') container?: string) {
+    return this.dockerStats.getContainerHistory(container ?? 'nest');
   }
 
   @Post('telemetry/page-visit')

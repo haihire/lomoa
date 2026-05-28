@@ -9,7 +9,6 @@ services:
       POSTGRES_PASSWORD: ${DB_PASS}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/01-schema.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
@@ -40,23 +39,12 @@ services:
       REDIS_HOST: redis
     volumes:
       - ./.env:/app/.env
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
-    networks:
-      - daloa-net
-
-  pgloader:
-    profiles:
-      - migration
-    image: dimitri/pgloader:latest
-    container_name: daloa-pgloader
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    volumes:
-      - ./scripts/pgloader:/pgloader
     networks:
       - daloa-net
 

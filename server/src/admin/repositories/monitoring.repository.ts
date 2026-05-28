@@ -22,14 +22,6 @@ export interface TimedGroupRow {
   count: bigint | number;
 }
 
-export interface RequestRow {
-  path: string | null;
-  method: string | null;
-  status_code: number | null;
-  duration_ms: number;
-  created_at: Date;
-}
-
 export interface VisitRow {
   path: string;
   device_type: DeviceType;
@@ -41,26 +33,6 @@ export interface DimensionRow {
   count: bigint | number;
 }
 
-export interface ApiStatRow {
-  path: string;
-  method: string;
-  request_count: bigint | number;
-  avg_duration_ms: number | null;
-}
-
-export interface ProbeStatRow {
-  api_key: string;
-  path: string;
-  method: string;
-  cache_type: 'redis' | 'no-cache';
-  request_count: bigint | number;
-  avg_duration_ms: number | null;
-  max_duration_ms: number | null;
-  last_duration_ms: number | null;
-  last_status_code: number | null;
-  last_success: boolean | null;
-}
-
 export interface SiteClickRow {
   site_name: string;
   site_href: string;
@@ -68,10 +40,23 @@ export interface SiteClickRow {
   click_count: bigint | number;
 }
 
-type RetentionTable =
-  | 'apm_system_metrics'
-  | 'apm_request_timings'
-  | 'monitoring_api_probes';
+type RetentionTable = 'apm_request_timings' | 'monitoring_api_probes';
+
+export type ContainerName = 'nest' | 'nginx' | 'redis' | 'postgres';
+
+const DOCKER_TABLE: Record<ContainerName, string> = {
+  nest: 'docker_metrics_nest',
+  nginx: 'docker_metrics_nginx',
+  redis: 'docker_metrics_redis',
+  postgres: 'docker_metrics_postgres',
+};
+
+export interface ContainerHistoryRow {
+  bucket: string;
+  avg_cpu: number;
+  avg_mem: number;
+  avg_mem_used_mb: number;
+}
 
 @Injectable()
 export class MonitoringRepository {
@@ -128,18 +113,6 @@ export class MonitoringRepository {
       )
     `;
     await this.prisma.$executeRaw`
-      CREATE TABLE IF NOT EXISTS apm_system_metrics (
-        id BIGSERIAL PRIMARY KEY,
-        cpu_percent DECIMAL(5,1) NOT NULL,
-        memory_percent DECIMAL(5,1) NOT NULL,
-        rss_mb INT NOT NULL,
-        heap_used_mb INT NOT NULL,
-        total_mem_mb INT NOT NULL,
-        load_avg_1m DECIMAL(10,2) NOT NULL,
-        created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )
-    `;
-    await this.prisma.$executeRaw`
       CREATE TABLE IF NOT EXISTS monitoring_api_probes (
         id BIGSERIAL PRIMARY KEY,
         api_key VARCHAR(100) NOT NULL,
@@ -178,8 +151,6 @@ export class MonitoringRepository {
     await this.prisma
       .$executeRaw`CREATE INDEX IF NOT EXISTS idx_apm_request_timings_scope_name ON apm_request_timings(scope, name)`;
     await this.prisma
-      .$executeRaw`CREATE INDEX IF NOT EXISTS idx_apm_system_metrics_created_at ON apm_system_metrics(created_at)`;
-    await this.prisma
       .$executeRaw`CREATE INDEX IF NOT EXISTS idx_monitoring_api_probes_created_at ON monitoring_api_probes(created_at)`;
     await this.prisma
       .$executeRaw`CREATE INDEX IF NOT EXISTS idx_monitoring_api_probes_api_key ON monitoring_api_probes(api_key)`;
@@ -191,6 +162,23 @@ export class MonitoringRepository {
       .$executeRaw`CREATE INDEX IF NOT EXISTS idx_apm_youtube_clicks_created_at ON apm_youtube_clicks(created_at)`;
     await this.prisma
       .$executeRaw`CREATE INDEX IF NOT EXISTS idx_apm_youtube_clicks_video_id ON apm_youtube_clicks(video_id)`;
+
+    for (const container of Object.keys(DOCKER_TABLE) as ContainerName[]) {
+      await this.prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS docker_metrics_${container} (
+          id BIGSERIAL PRIMARY KEY,
+          cpu_percent DECIMAL(5,2) NOT NULL,
+          mem_used_mb INT NOT NULL,
+          mem_total_mb INT NOT NULL,
+          mem_percent DECIMAL(5,2) NOT NULL,
+          created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await this.prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS idx_docker_${container}_created_at
+        ON docker_metrics_${container}(created_at)
+      `);
+    }
   }
 
   async recordRequest(input: {
@@ -288,26 +276,6 @@ export class MonitoringRepository {
     `;
   }
 
-  async recordSystemMetric(input: {
-    cpuPercent: number;
-    memoryPercent: number;
-    rssMb: number;
-    heapUsedMb: number;
-    totalMemMb: number;
-    loadAvg1m: number;
-  }) {
-    await this.prisma.apm_system_metrics.create({
-      data: {
-        cpu_percent: input.cpuPercent,
-        memory_percent: input.memoryPercent,
-        rss_mb: input.rssMb,
-        heap_used_mb: input.heapUsedMb,
-        total_mem_mb: input.totalMemMb,
-        load_avg_1m: input.loadAvg1m,
-      },
-    });
-  }
-
   async recordApiProbe(input: {
     apiKey: string;
     path: string;
@@ -333,36 +301,6 @@ export class MonitoringRepository {
     `;
   }
 
-  async findLatestSystemMetric() {
-    return this.prisma.apm_system_metrics.findFirst({
-      orderBy: { created_at: 'desc' },
-      select: {
-        created_at: true,
-        cpu_percent: true,
-        memory_percent: true,
-        rss_mb: true,
-        heap_used_mb: true,
-        total_mem_mb: true,
-        load_avg_1m: true,
-      },
-    });
-  }
-
-  async findSystemSeriesSince(since: Date) {
-    return this.prisma.apm_system_metrics.findMany({
-      where: { created_at: { gte: since } },
-      orderBy: { created_at: 'asc' },
-      select: {
-        created_at: true,
-        cpu_percent: true,
-        memory_percent: true,
-        rss_mb: true,
-        heap_used_mb: true,
-        total_mem_mb: true,
-      },
-    });
-  }
-
   async findSummary(slowThresholdMs: number) {
     const rows = await this.prisma.$queryRaw<SummaryRow[]>`
       SELECT
@@ -381,25 +319,16 @@ export class MonitoringRepository {
     return rows[0];
   }
 
-  async findRecentDurations() {
-    return this.prisma.$queryRaw<Array<{ duration_ms: number }>>`
-      SELECT duration_ms
-      FROM apm_request_timings
-      WHERE created_at >= NOW() - INTERVAL '1 hour'
-      ORDER BY duration_ms ASC
-    `;
-  }
-
-  async findRequestSeries() {
-    return this.prisma.$queryRaw<TimedGroupRow[]>`
-      SELECT TO_CHAR(date_trunc('minute', created_at), 'HH24:MI') AS bucket,
-             TO_CHAR(date_trunc('minute', created_at), 'HH24:MI') AS label,
-             ROUND(AVG(duration_ms))::int AS avg_duration_ms,
+  async findPageVisitSeriesDays(days: number) {
+    return this.prisma.$queryRaw<
+      Array<{ bucket: string; count: bigint | number }>
+    >`
+      SELECT TO_CHAR(DATE(last_seen_at), 'MM-DD') AS bucket,
              COUNT(*) AS count
-      FROM apm_request_timings
-      WHERE created_at >= NOW() - INTERVAL '1 hour'
-      GROUP BY date_trunc('minute', created_at)
-      ORDER BY date_trunc('minute', created_at) ASC
+      FROM apm_page_visits
+      WHERE last_seen_at >= NOW() - (${days}::int * INTERVAL '1 day')
+      GROUP BY DATE(last_seen_at)
+      ORDER BY DATE(last_seen_at) ASC
     `;
   }
 
@@ -412,7 +341,7 @@ export class MonitoringRepository {
       FROM (
         SELECT DATE(created_at) AS day_key
         FROM apm_site_clicks
-        WHERE created_at >= NOW() - (${days} * INTERVAL '1 day')
+        WHERE created_at >= NOW() - (${days}::int * INTERVAL '1 day')
       ) AS site_click_days
       GROUP BY day_key
       ORDER BY day_key ASC
@@ -428,7 +357,7 @@ export class MonitoringRepository {
       FROM (
         SELECT DATE(created_at) AS day_key
         FROM apm_youtube_clicks
-        WHERE created_at >= NOW() - (${days} * INTERVAL '1 day')
+        WHERE created_at >= NOW() - (${days}::int * INTERVAL '1 day')
       ) AS youtube_click_days
       GROUP BY day_key
       ORDER BY day_key ASC
@@ -447,7 +376,7 @@ export class MonitoringRepository {
           api_key,
           duration_ms
         FROM monitoring_api_probes
-        WHERE created_at >= NOW() - (${rangeDays} * INTERVAL '1 day')
+        WHERE created_at >= NOW() - (${rangeDays}::int * INTERVAL '1 day')
       ) AS probe_buckets
       GROUP BY bucket_start, api_key
       ORDER BY bucket_start ASC
@@ -477,60 +406,11 @@ export class MonitoringRepository {
     return this.findDimensionRows('browser_name');
   }
 
-  async findSlowRequests(slowThresholdMs: number) {
-    return this.prisma.$queryRaw<RequestRow[]>`
-      SELECT path, method, status_code, duration_ms, created_at
-      FROM apm_request_timings
-      WHERE created_at >= NOW() - INTERVAL '1 hour'
-        AND duration_ms >= ${slowThresholdMs}
-      ORDER BY duration_ms DESC
-      LIMIT 20
+  async findYoutubeClickTotal(): Promise<number> {
+    const rows = await this.prisma.$queryRaw<Array<{ total: bigint | number }>>`
+      SELECT COUNT(*) AS total FROM apm_youtube_clicks
     `;
-  }
-
-  async findApiStats() {
-    return this.prisma.$queryRaw<ApiStatRow[]>`
-      SELECT COALESCE(path, name) AS path,
-             COALESCE(method, 'GET') AS method,
-             COUNT(*) AS request_count,
-             ROUND(AVG(duration_ms))::int AS avg_duration_ms
-      FROM apm_request_timings
-      WHERE scope = 'route'
-        AND created_at >= NOW() - INTERVAL '1 hour'
-      GROUP BY COALESCE(path, name), COALESCE(method, 'GET')
-      ORDER BY request_count DESC, avg_duration_ms DESC
-      LIMIT 30
-    `;
-  }
-
-  async findProbeStats() {
-    return this.prisma.$queryRaw<ProbeStatRow[]>`
-      WITH grouped AS (
-        SELECT api_key, path, method, cache_type,
-               COUNT(*) AS request_count,
-               ROUND(AVG(duration_ms))::int AS avg_duration_ms,
-               MAX(duration_ms) AS max_duration_ms
-        FROM monitoring_api_probes
-        WHERE created_at >= NOW() - INTERVAL '1 day'
-        GROUP BY api_key, path, method, cache_type
-      ),
-      latest AS (
-        SELECT DISTINCT ON (api_key, path, method, cache_type)
-               api_key, path, method, cache_type,
-               duration_ms AS last_duration_ms,
-               status_code AS last_status_code,
-               is_success AS last_success
-        FROM monitoring_api_probes
-        WHERE created_at >= NOW() - INTERVAL '1 day'
-        ORDER BY api_key, path, method, cache_type, created_at DESC
-      )
-      SELECT g.api_key, g.path, g.method, g.cache_type,
-             g.request_count, g.avg_duration_ms, g.max_duration_ms,
-             l.last_duration_ms, l.last_status_code, l.last_success
-      FROM grouped g
-      JOIN latest l USING (api_key, path, method, cache_type)
-      ORDER BY g.avg_duration_ms DESC
-    `;
+    return Number(rows[0]?.total ?? 0);
   }
 
   async findSiteClicks() {
@@ -541,6 +421,55 @@ export class MonitoringRepository {
       ORDER BY click_count DESC
       LIMIT 20
     `;
+  }
+
+  async saveDockerMetric(
+    container: ContainerName,
+    input: {
+      cpuPercent: number;
+      memUsedMb: number;
+      memTotalMb: number;
+      memPercent: number;
+    },
+  ): Promise<void> {
+    const table = DOCKER_TABLE[container];
+    await this.prisma.$executeRawUnsafe(
+      `INSERT INTO ${table} (cpu_percent, mem_used_mb, mem_total_mb, mem_percent, created_at)
+       VALUES ($1::numeric, $2::numeric::int, $3::numeric::int, $4::numeric, NOW())`,
+      input.cpuPercent,
+      input.memUsedMb,
+      input.memTotalMb,
+      input.memPercent,
+    );
+  }
+
+  async findDockerMetricSeries(
+    container: ContainerName,
+    days: number,
+  ): Promise<ContainerHistoryRow[]> {
+    const table = DOCKER_TABLE[container];
+    return this.prisma.$queryRawUnsafe<ContainerHistoryRow[]>(
+      `SELECT TO_CHAR(DATE_TRUNC('hour', created_at), 'MM-DD HH24:MI') AS bucket,
+              ROUND(AVG(cpu_percent)::numeric, 2)::float AS avg_cpu,
+              ROUND(AVG(mem_percent)::numeric, 2)::float AS avg_mem,
+              ROUND(AVG(mem_used_mb))::int AS avg_mem_used_mb
+       FROM ${table}
+       WHERE created_at >= NOW() - ($1::int * INTERVAL '1 day')
+       GROUP BY DATE_TRUNC('hour', created_at)
+       ORDER BY DATE_TRUNC('hour', created_at) ASC`,
+      days,
+    );
+  }
+
+  async deleteDockerMetricsOlderThan(
+    container: ContainerName,
+    retentionDays: number,
+  ): Promise<void> {
+    const table = DOCKER_TABLE[container];
+    await this.prisma.$executeRawUnsafe(
+      `DELETE FROM ${table} WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')`,
+      retentionDays,
+    );
   }
 
   async deleteMetricRowsOlderThan(
@@ -572,8 +501,6 @@ export class MonitoringRepository {
     chunkSize: number,
   ) {
     switch (tableName) {
-      case 'apm_system_metrics':
-        return this.deleteSystemMetricRowsOlderThan(retentionDays, chunkSize);
       case 'apm_request_timings':
         return this.deleteRequestTimingRowsOlderThan(retentionDays, chunkSize);
       case 'monitoring_api_probes':
@@ -595,28 +522,6 @@ export class MonitoringRepository {
     );
   }
 
-  private async deleteSystemMetricRowsOlderThan(
-    retentionDays: number,
-    chunkSize: number,
-  ) {
-    const deleted = await this.prisma.$queryRawUnsafe<Array<{ id: bigint }>>(
-      `
-      DELETE FROM apm_system_metrics
-      WHERE id IN (
-        SELECT id
-        FROM apm_system_metrics
-        WHERE created_at < NOW() - ($1 * INTERVAL '1 day')
-        ORDER BY id ASC
-        LIMIT $2
-      )
-      RETURNING id
-      `,
-      retentionDays,
-      chunkSize,
-    );
-    return deleted.length;
-  }
-
   private async deleteRequestTimingRowsOlderThan(
     retentionDays: number,
     chunkSize: number,
@@ -627,7 +532,7 @@ export class MonitoringRepository {
       WHERE id IN (
         SELECT id
         FROM apm_request_timings
-        WHERE created_at < NOW() - ($1 * INTERVAL '1 day')
+        WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')
         ORDER BY id ASC
         LIMIT $2
       )
@@ -649,7 +554,7 @@ export class MonitoringRepository {
       WHERE id IN (
         SELECT id
         FROM monitoring_api_probes
-        WHERE created_at < NOW() - ($1 * INTERVAL '1 day')
+        WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')
         ORDER BY id ASC
         LIMIT $2
       )

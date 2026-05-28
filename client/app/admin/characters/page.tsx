@@ -40,22 +40,34 @@ const STAT_BUILDS = [
 ];
 const PAGE_SIZE = 20;
 
+let charactersCache: {
+  result: ListResult;
+  search: string;
+  statBuild: string;
+  classDetail: string;
+  page: number;
+} | null = null;
+
 export default function AdminCharactersPage() {
-  const [result, setResult] = useState<ListResult | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [result, setResult] = useState<ListResult | null>(
+    charactersCache?.result ?? null,
+  );
+  const [loading, setLoading] = useState(charactersCache === null);
   const [error, setError] = useState("");
   const [accessNotice, setAccessNotice] = useState("");
   const role = useAdminRole();
   const isGuest = role === "guest";
 
-  const [search, setSearch] = useState("");
-  const [statBuild, setStatBuild] = useState("");
-  const [classDetail, setClassDetail] = useState("");
-  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState(charactersCache?.search ?? "");
+  const [statBuild, setStatBuild] = useState(charactersCache?.statBuild ?? "");
+  const [classDetail, setClassDetail] = useState(
+    charactersCache?.classDetail ?? "",
+  );
+  const [page, setPage] = useState(charactersCache?.page ?? 1);
 
   const load = useCallback(
     async (p = page) => {
-      setLoading(true);
+      if (charactersCache === null) setLoading(true);
       const params = new URLSearchParams({
         page: String(p),
         pageSize: String(PAGE_SIZE),
@@ -71,7 +83,9 @@ export default function AdminCharactersPage() {
         setLoading(false);
         return;
       }
-      setResult((await res.json()) as ListResult);
+      const data = (await res.json()) as ListResult;
+      charactersCache = { result: data, search, statBuild, classDetail, page: p };
+      setResult(data);
       setLoading(false);
     },
     [page, search, statBuild, classDetail],
@@ -87,6 +101,7 @@ export default function AdminCharactersPage() {
   }
 
   const [purging, setPurging] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   function requireMaster(action: string) {
     if (!isGuest) return true;
@@ -106,6 +121,27 @@ export default function AdminCharactersPage() {
       alert("캐릭터 캐시가 무효화됐습니다.");
     } finally {
       setPurging(false);
+    }
+  }
+
+  async function handleDownload() {
+    setDownloading(true);
+    try {
+      const res = await fetch("/api/admin/sync/users/local-export");
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        alert(`다운로드 실패 (${res.status}): ${txt}`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `loa_users-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -130,14 +166,24 @@ export default function AdminCharactersPage() {
             </pre>
           )}
         </div>
-        <button
-          onClick={handlePurge}
-          disabled={purging}
-          className="admin-btn admin-btn-secondary"
-          title="Redis 캐릭터 캐시 즉시 삭제"
-        >
-          {purging ? "처리 중..." : "캐시 새로고침"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleDownload}
+            disabled={downloading}
+            className="admin-btn admin-btn-secondary"
+            title="현재 캐릭터 데이터를 JSON으로 다운로드"
+          >
+            {downloading ? "다운로드 중..." : "다운로드"}
+          </button>
+          <button
+            onClick={handlePurge}
+            disabled={purging}
+            className="admin-btn admin-btn-secondary"
+            title="Redis 캐릭터 캐시 즉시 삭제"
+          >
+            {purging ? "처리 중..." : "캐시 새로고침"}
+          </button>
+        </div>
       </div>
 
       {/* 필터 */}

@@ -144,7 +144,12 @@ export default function MonitoringPage() {
           }
           prevVisitCountRef.current = nextVisitCount;
 
-          return { ...base, sectionSeries: prev.sectionSeries };
+          return {
+            ...base,
+            sectionSeries: prev.sectionSeries,
+            pageVisitSeries: prev.pageVisitSeries ?? base.pageVisitSeries,
+            youtubeClickTotal: prev.youtubeClickTotal ?? base.youtubeClickTotal,
+          };
         });
         hasLoadedRef.current = true;
       } catch {

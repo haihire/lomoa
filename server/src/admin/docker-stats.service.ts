@@ -172,6 +172,25 @@ export class DockerStatsService {
     }
   }
 
+  async getDiskUsage(): Promise<{ usedGb: number; totalGb: number; percent: number } | null> {
+    try {
+      const { stdout } = await execFileAsync('df', ['/'], { timeout: 5000 });
+      const lines = stdout.trim().split('\n');
+      const parts = lines[1]?.trim().split(/\s+/);
+      if (!parts || parts.length < 5) return null;
+      const totalKb = parseInt(parts[1] ?? '0', 10);
+      const usedKb = parseInt(parts[2] ?? '0', 10);
+      const percent = parseInt((parts[4] ?? '0%').replace('%', ''), 10);
+      return {
+        totalGb: Number((totalKb / 1024 / 1024).toFixed(1)),
+        usedGb: Number((usedKb / 1024 / 1024).toFixed(1)),
+        percent: Number.isFinite(percent) ? percent : 0,
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async getContainerHistory(
     container: string,
   ): Promise<ContainerHistoryPoint[]> {

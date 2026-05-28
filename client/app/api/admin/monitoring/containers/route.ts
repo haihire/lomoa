@@ -11,9 +11,9 @@ export async function GET() {
       headers: { "x-admin-session": token },
       cache: "no-store",
     });
-    const data = await res.json().catch(() => []);
+    const data = await res.json().catch(() => ({ containers: [], disk: null }));
     return NextResponse.json(data, { status: res.status });
   } catch {
-    return NextResponse.json([], { status: 503 });
+    return NextResponse.json({ containers: [], disk: null }, { status: 503 });
   }
 }

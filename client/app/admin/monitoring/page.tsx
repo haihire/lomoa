@@ -14,6 +14,12 @@ interface ContainerStat {
   netOutMb: number;
 }
 
+interface DiskUsage {
+  usedGb: number;
+  totalGb: number;
+  percent: number;
+}
+
 interface ContainerHistoryPoint {
   bucket: string;
   avgCpu: number;
@@ -90,6 +96,7 @@ function toFixedHundred<T extends { count: number }>(
 
 let monitoringCache: Dashboard | null = null;
 let containersCache: ContainerStat[] | null = null;
+let diskCache: DiskUsage | null = null;
 const containerHistoryCache: Record<string, ContainerHistoryPoint[]> = {};
 
 export default function MonitoringPage() {
@@ -101,6 +108,7 @@ export default function MonitoringPage() {
   const [pageVisitDays, setPageVisitDays] = useState<7 | 30>(7);
   const [sectionTab, setSectionTab] = useState<"sites" | "stat-builds" | "youtube">("sites");
   const [containers, setContainers] = useState<ContainerStat[]>(containersCache ?? []);
+  const [disk, setDisk] = useState<DiskUsage | null>(diskCache);
   const [containersLoading, setContainersLoading] = useState(containersCache === null);
   const [containerTab, setContainerTab] = useState<string>("전체");
   const [containerHistory, setContainerHistory] = useState<ContainerHistoryPoint[]>([]);
@@ -156,9 +164,11 @@ export default function MonitoringPage() {
       try {
         const res = await fetch("/api/admin/monitoring/containers", { cache: "no-store" });
         if (!alive || !res.ok) return;
-        const data = (await res.json()) as ContainerStat[];
-        containersCache = data;
-        setContainers(data);
+        const json = (await res.json()) as { containers: ContainerStat[]; disk: DiskUsage | null };
+        containersCache = json.containers;
+        diskCache = json.disk;
+        setContainers(json.containers);
+        setDisk(json.disk);
       } catch {
         // keep previous
       } finally {
@@ -365,8 +375,8 @@ export default function MonitoringPage() {
                     <div className="space-y-0.5 text-xs text-[color:var(--admin-text-muted)]">
                       <p>CPU <span className="font-medium text-[color:var(--admin-text)]">{c.cpuPercent.toFixed(1)}%</span></p>
                       <p>
-                        메모리 <span className="font-medium text-[color:var(--admin-text)]">{c.memUsedMb}MB</span>
-                        <span className="ml-1">({c.memPercent.toFixed(1)}% / {c.memTotalMb}MB)</span>
+                        메모리 <span className="font-medium text-[color:var(--admin-text)]">{c.memPercent.toFixed(1)}%</span>
+                        <span className="ml-1">({c.memUsedMb}MB / {c.memTotalMb}MB)</span>
                       </p>
                       <p>↓{c.netInMb}MB · ↑{c.netOutMb}MB</p>
                     </div>
@@ -378,10 +388,16 @@ export default function MonitoringPage() {
                     <div className="space-y-0.5 text-xs text-[color:var(--admin-text-muted)]">
                       <p>CPU <span className="font-medium text-[color:var(--admin-text)]">{containerTotals.totalCpu.toFixed(1)}%</span></p>
                       <p>
-                        메모리 <span className="font-medium text-[color:var(--admin-text)]">{containerTotals.totalUsedMb.toFixed(0)}MB</span>
-                        <span className="ml-1">({containerTotals.totalMemPct.toFixed(1)}% / {containerTotals.totalMb}MB)</span>
+                        메모리 <span className="font-medium text-[color:var(--admin-text)]">{containerTotals.totalMemPct.toFixed(1)}%</span>
+                        <span className="ml-1">({containerTotals.totalUsedMb.toFixed(0)}MB / {containerTotals.totalMb}MB)</span>
                       </p>
                       <p>↓{containerTotals.totalNetIn.toFixed(1)}MB · ↑{containerTotals.totalNetOut.toFixed(1)}MB</p>
+                      {disk && (
+                        <p>
+                          디스크 <span className="font-medium text-[color:var(--admin-text)]">{disk.percent}%</span>
+                          <span className="ml-1">({disk.usedGb}GB / {disk.totalGb}GB)</span>
+                        </p>
+                      )}
                     </div>
                   </div>
                 )}

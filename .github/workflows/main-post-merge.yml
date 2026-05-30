@@ -68,6 +68,7 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           remote_script="set -e
+          export PATH=/usr/local/bin:/snap/bin:/usr/bin:\$PATH
           cd /home/ubuntu/daloa
           git reset --hard HEAD
           git pull origin main

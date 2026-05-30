@@ -95,10 +95,9 @@ GitHub 웹에서 Pull Request를 생성하면:
 
 | 시점            | 작업        | 명령어                                                                 |
 | --------------- | ----------- | ---------------------------------------------------------------------- |
-| 매일 PR 전      | 로컬 테스트 | `powershell -File scripts/test.ps1`                                    |
-| PR 생성 시      | 자동 검증   | GitHub Actions 자동 실행                                               |
-| main 머지 후    | 배포 트리거 | `.github/workflows/main-post-merge.yml`                                |
-| 주 1회 (금요일) | E2E 전체    | `powershell -File scripts/test.ps1 -E2E` 또는 GitHub Actions 수동 실행 |
+| PR 생성 시      | 자동 검증   | GitHub Actions 자동 실행                    |
+| main 머지 후    | 배포 트리거 | `.github/workflows/main-post-merge.yml`     |
+| 주 1회 (금요일) | E2E 전체    | GitHub Actions 수동 실행                    |
 
 ### Server E2E 수동 실행 (필요 시)
 
@@ -168,7 +167,7 @@ GitHub 웹에서:
 
 ### E2E 테스트 실패
 
-로컬에서 `powershell -File scripts/test.ps1 -E2E` 먼저 확인 후, DB/Redis 환경 점검하세요.
+DB/Redis 환경 점검하세요.
 
 ---
 

@@ -33,8 +33,14 @@ export default function AdminLayout({
       <aside className="admin-sidebar w-56 flex flex-col shrink-0">
         <div className="px-5 py-6 border-b border-[color:var(--admin-sidebar-border)]">
           <span className="admin-sidebar-brand text-base font-bold">
-            관리자 <span className="text-blue-400">Admin</span>
+            관리자
           </span>
+          <Link
+            href="/"
+            className="mt-2 flex items-center gap-1 text-xs font-medium px-2 py-1 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors w-fit"
+          >
+            ↗ 메인 사이트 바로가기
+          </Link>
         </div>
         <nav className="flex-1 py-4 px-3 space-y-1">
           {NAV.map(({ href, label }) => {

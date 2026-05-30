@@ -53,29 +53,30 @@ Write-Host "========================================"
 Write-Host ""
 
 # 1) 오래된 로그 정리 (30일 이상)
-Write-Host "[1/4] 오래된 로그 정리 중..."
+Write-Host "[1/5] 오래된 로그 정리 중..."
 & "$Root\scripts\cleanup-logs.ps1" -Days 30 | Out-Null
-Write-Host "[1/4] 완료`n"
+Write-Host "[1/5] 완료`n"
 
 # 2) SSH 터널 (EC2 Redis → 로컬 6380)
+Write-Host "[2/5] SSH 터널 확인 중..."
 $pemPath = Join-Path $Root "daloa-key.pem"
 $tunnelRunning = netstat -ano | Select-String ":6380\s" | Where-Object { $_ -match 'LISTENING' }
 if (-not $tunnelRunning) {
-    Write-Host "[dev] SSH 터널 시작 (EC2 Redis → localhost:6380)..."
+    Write-Host "[2/5] SSH 터널 시작 (EC2 Redis → localhost:6380)..."
     Start-Process ssh -ArgumentList "-i `"$pemPath`" -N -L 6380:172.18.0.4:6379 -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=3 ubuntu@3.39.239.9" -WindowStyle Hidden
     Start-Sleep -Seconds 2
-    Write-Host "[dev] SSH 터널 시작 완료`n"
+    Write-Host "[2/5] 완료`n"
 } else {
-    Write-Host "[dev] SSH 터널 이미 실행 중 (localhost:6380)`n"
+    Write-Host "[2/5] 이미 실행 중 (localhost:6380)`n"
 }
 
 # 3) 기존 포트 정리
-Write-Host "[2/4] 기존 포트 정리 중..."
+Write-Host "[3/5] 기존 포트 정리 중..."
 Kill-Port $ServerPort
 Kill-Port $ClientPort
 Start-Sleep -Milliseconds 500
 
-# 3) 로그 디렉터리 보장
+# 로그 디렉터리 보장
 $today = (Get-Date).ToString("yyyy-MM-dd")
 $serverLogDir  = Join-Path $Root "server\logs"
 $clientLogDir  = Join-Path $Root "client\logs"
@@ -86,14 +87,14 @@ if (-not (Test-Path $serverLogDir)) { New-Item -ItemType Directory -Path $server
 if (-not (Test-Path $clientLogDir)) { New-Item -ItemType Directory -Path $clientLogDir | Out-Null }
 
 # 4) 서버 시작 (별도 창 — 로그를 파일로도 저장)
-Write-Host "[3/4] 서버 시작 (포트 $ServerPort)..."
-$serverCmd = "cd '$Root\server'; npm run start:dev"
+Write-Host "[4/5] 서버 시작 (포트 $ServerPort)..."
+$serverCmd = "cd '$Root\server'; npm run start:dev *>&1 | Tee-Object -FilePath '$serverLogFile' -Append"
 Start-Process powershell -ArgumentList "-NoProfile", "-Command", $serverCmd -WindowStyle Hidden | Out-Null
 
 if (-not (Wait-PortOpen -Port $ServerPort -TimeoutSec 20)) {
     Write-Host "[dev] 서버 포트 오픈 실패. 안정 모드(npx nest start)로 재시도..."
     Kill-Port $ServerPort
-    $serverFallbackCmd = "cd '$Root\server'; npx nest start"
+    $serverFallbackCmd = "cd '$Root\server'; npx nest start *>&1 | Tee-Object -FilePath '$serverLogFile' -Append"
     Start-Process powershell -ArgumentList "-NoProfile", "-Command", $serverFallbackCmd -WindowStyle Hidden | Out-Null
 
     if (-not (Wait-PortOpen -Port $ServerPort -TimeoutSec 20)) {
@@ -105,8 +106,8 @@ if (-not (Wait-PortOpen -Port $ServerPort -TimeoutSec 20)) {
 
 Start-Sleep -Seconds 3
 
-# 5) Client start (separate window, also tee logs to file)
-Write-Host "[4/4] Client start (port $ClientPort)..."
+# 5) 클라이언트 시작 (별도 창 — 로그를 파일로도 저장)
+Write-Host "[5/5] 클라이언트 시작 (포트 $ClientPort)..."
 $clientCmd = "cd '$Root\client'; npm run dev *>&1 | Tee-Object -FilePath '$clientLogFile' -Append"
 Start-Process powershell -ArgumentList "-NoProfile", "-Command", $clientCmd -WindowStyle Hidden | Out-Null
 
@@ -115,15 +116,10 @@ if (-not (Wait-PortOpen -Port $ClientPort -TimeoutSec 20)) {
 }
 
 Write-Host ""
-Write-Host "[dev] Startup complete."
-Write-Host "  Log cleanup: files older than 30 days are removed automatically"
-Write-Host "  Server log : $serverLogFile"
-Write-Host "  Client log : $clientLogFile"
+Write-Host "[dev] 시작 완료."
+Write-Host "  서버 로그: $serverLogFile"
+Write-Host "  클라이언트 로그: $clientLogFile"
 Write-Host ""
-Write-Host "  Run tests (separate terminal):"
-Write-Host "    cd server  ;  npm test"
-Write-Host "    cd client  ;  npm test"
-Write-Host ""
-Write-Host "  Manual log cleanup (optional):"
+Write-Host "  로그 수동 정리:"
 Write-Host "    powershell -File scripts/cleanup-logs.ps1 -Days 7 -Verbose"
 Write-Host ""

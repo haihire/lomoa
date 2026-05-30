@@ -1,10 +1,10 @@
 # cleanup-logs.ps1 — 오래된 로그 파일 자동 정리
 # 사용: powershell -File scripts/cleanup-logs.ps1 [-Days 30] [-Verbose]
-# 효과: RETENTION_DAYS보다 오래된 로그 파일(app-*.log, error-*.log)을 삭제
+# 효과: RETENTION_DAYS보다 오래된 로그 파일을 삭제
 
+[CmdletBinding()]
 param(
-    [int]$Days = 30,
-    [switch]$Verbose = $false
+    [int]$Days = 30
 )
 
 $Root = Split-Path -Parent $PSScriptRoot
@@ -26,9 +26,7 @@ Write-Host ""
 
 foreach ($logDir in $LogDirs) {
     if (-not (Test-Path $logDir)) {
-        if ($Verbose) {
-            Write-Host "  [SKIP] $logDir (존재하지 않음)" -ForegroundColor Gray
-        }
+        Write-Verbose "  [SKIP] $logDir (존재하지 않음)"
         continue
     }
 
@@ -52,9 +50,7 @@ foreach ($logDir in $LogDirs) {
                 Remove-Item -Path $file.FullName -Force -ErrorAction Stop
                 $deleted++
                 $deletedSize += $file.Length
-                if ($Verbose) {
-                    Write-Host "  ✓ 삭제: $($file.Name) ($sizeKB KB)" -ForegroundColor Green
-                }
+                Write-Verbose "  ✓ 삭제: $($file.Name) ($sizeKB KB)"
             } catch {
                 Write-Host "  ✗ 실패: $($file.Name) — $_" -ForegroundColor Red
             }

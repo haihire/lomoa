@@ -1,0 +1,28 @@
+name: Auto Delete Branch
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  delete-branch:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete sub-branch after merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          parent_branches="main ci/cd feat/admin feat/mainPage fix/admin fix/mainPage"
+          for branch in $parent_branches; do
+            if [ "$HEAD_BRANCH" = "$branch" ]; then
+              echo "$HEAD_BRANCH is a parent branch, skipping deletion."
+              exit 0
+            fi
+          done
+          echo "Deleting sub-branch: $HEAD_BRANCH"
+          gh api --method DELETE "repos/$REPO/git/refs/heads/$HEAD_BRANCH"

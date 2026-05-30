@@ -8,47 +8,18 @@ interface Props {
   tabs: StatBuildTab[];
 }
 
-const BUILD_STYLE: Record<string, { tab: string; bar: string; bg: string }> = {
-  치신: {
-    tab: "bg-red-500 text-white",
-    bar: "bg-red-400",
-    bg: "bg-red-500",
-  },
-  신치: {
-    tab: "bg-blue-500 text-white",
-    bar: "bg-blue-400",
-    bg: "bg-blue-500",
-  },
-  치특: {
-    tab: "bg-orange-500 text-white",
-    bar: "bg-orange-400",
-    bg: "bg-orange-500",
-  },
-  특치: {
-    tab: "bg-amber-500 text-white",
-    bar: "bg-amber-400",
-    bg: "bg-amber-500",
-  },
-  신특: {
-    tab: "bg-indigo-500 text-white",
-    bar: "bg-indigo-400",
-    bg: "bg-indigo-500",
-  },
-  특신: {
-    tab: "bg-purple-500 text-white",
-    bar: "bg-purple-400",
-    bg: "bg-purple-500",
-  },
-  치특신: {
-    tab: "bg-cyan-500 text-white",
-    bar: "bg-cyan-400",
-    bg: "bg-cyan-500",
-  },
-  미설정: {
-    tab: "bg-slate-400 text-white",
-    bar: "bg-slate-300",
-    bg: "bg-slate-400",
-  },
+const BUILD_STYLE: Record<
+  string,
+  { tab: string; bar: string; bg: string; light: string }
+> = {
+  치신:  { tab: "bg-red-500 text-white",    bar: "bg-red-400",    bg: "bg-red-500",    light: "bg-red-100 text-red-700" },
+  신치:  { tab: "bg-blue-500 text-white",   bar: "bg-blue-400",   bg: "bg-blue-500",   light: "bg-blue-100 text-blue-700" },
+  치특:  { tab: "bg-orange-500 text-white", bar: "bg-orange-400", bg: "bg-orange-500", light: "bg-orange-100 text-orange-700" },
+  특치:  { tab: "bg-amber-500 text-white",  bar: "bg-amber-400",  bg: "bg-amber-500",  light: "bg-amber-100 text-amber-700" },
+  신특:  { tab: "bg-indigo-500 text-white", bar: "bg-indigo-400", bg: "bg-indigo-500", light: "bg-indigo-100 text-indigo-700" },
+  특신:  { tab: "bg-purple-500 text-white", bar: "bg-purple-400", bg: "bg-purple-500", light: "bg-purple-100 text-purple-700" },
+  치특신: { tab: "bg-cyan-500 text-white",  bar: "bg-cyan-400",   bg: "bg-cyan-500",   light: "bg-cyan-100 text-cyan-700" },
+  미설정: { tab: "bg-slate-400 text-white", bar: "bg-slate-300",  bg: "bg-slate-400",  light: "bg-slate-100 text-slate-500" },
 };
 const DEFAULT_STYLE = BUILD_STYLE["미설정"];
 
@@ -87,6 +58,7 @@ export default function StatBuildList({ tabs }: Props) {
   // 탭 뷰
   const current =
     safeTabs.find((t) => t.statBuild === activeTab) ?? safeTabs[0];
+  // 색 농도 정규화용: 탭 내 최다 항목 기준
   const maxCount = Math.max(...(current?.items?.map((i) => i.count) ?? [1]), 1);
 
   return (
@@ -179,13 +151,15 @@ export default function StatBuildList({ tabs }: Props) {
             )}
           </div>
         ) : (
-          /* ── 탭 뷰: 왼쪽 세로 막대 + 오른쪽 항목 리스트 ── */
+          /* ── 탭 뷰: 왼쪽 탭 목록 + 오른쪽 항목 리스트 ── */
           <div className="flex gap-3 flex-1 min-h-0">
-            {/* 왼쪽: 세로 스택 바 (100% 높이) */}
-            <div className="shrink-0 w-8 flex flex-col overflow-hidden rounded-lg self-stretch">
+            {/* 왼쪽: 빌드 탭 목록 (컨테이너 높이에 맞춰 균등 분배) */}
+            <div className="shrink-0 flex w-20 flex-col gap-0.5">
               {safeTabs.map((tab) => {
                 const pct =
-                  grandTotal > 0 ? (tab.totalCount / grandTotal) * 100 : 0;
+                  grandTotal > 0
+                    ? Math.round((tab.totalCount / grandTotal) * 100)
+                    : 0;
                 const style = BUILD_STYLE[tab.statBuild] ?? DEFAULT_STYLE;
                 const isActive = tab.statBuild === activeTab;
                 return (
@@ -204,15 +178,18 @@ export default function StatBuildList({ tabs }: Props) {
                         item_id: tab.statBuild,
                       });
                     }}
-                    title={`${tab.statBuild} ${Math.round(pct)}%`}
-                    className={`w-full transition-opacity ${style.bg} ${
-                      isActive ? "opacity-100" : "opacity-40 hover:opacity-70"
+                    title={`${tab.statBuild} ${pct}%`}
+                    className={`flex min-h-[28px] w-full flex-1 items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs font-semibold transition ${
+                      isActive ? style.tab : `${style.light} hover:brightness-95`
                     }`}
-                    style={{
-                      height: `${pct}%`,
-                      minHeight: pct > 0 ? "4px" : "0",
-                    }}
-                  />
+                  >
+                    <span className="flex-1 truncate">{tab.statBuild}</span>
+                    <span
+                      className={`shrink-0 tabular-nums ${isActive ? "opacity-80" : "opacity-70"}`}
+                    >
+                      {pct}%
+                    </span>
+                  </button>
                 );
               })}
             </div>
@@ -220,37 +197,31 @@ export default function StatBuildList({ tabs }: Props) {
             {/* 오른쪽: 항목 리스트 */}
             <ul
               key={activeTab}
-              className="flex flex-col gap-1 flex-1 overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:theme(colors.slate.200)_transparent]"
+              className="flex flex-col gap-2 flex-1 overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:theme(colors.slate.200)_transparent]"
             >
               {[...(current?.items ?? [])]
                 .sort((a, b) => b.count - a.count)
                 .map((item, idx) => {
                   const style = BUILD_STYLE[activeTab] ?? DEFAULT_STYLE;
+                  const fillOpacity = 0.12 + (item.count / maxCount) * 0.73;
                   return (
                     <li
                       key={`${item.classDetail}-${idx}`}
-                      className="flex items-center gap-2 py-0.5"
+                      className="relative flex shrink-0 items-start gap-2 overflow-hidden rounded-md px-1 py-2"
                     >
-                      <span className="w-4 shrink-0 text-center text-xs font-bold text-slate-400">
+                      <div
+                        className={`absolute inset-0 ${style.bar} transition-all`}
+                        style={{ opacity: fillOpacity }}
+                      />
+                      <span className="relative w-4 shrink-0 text-center text-xs font-bold text-slate-900">
                         {idx + 1}
                       </span>
-                      <div className="flex w-24 shrink-0 flex-col">
-                        <span className="truncate text-xs font-semibold leading-tight text-slate-800">
+                      <div className="relative flex min-w-0 flex-1 flex-col">
+                        <span className="text-xs font-medium leading-tight text-slate-900">
                           {item.classEngraving}
                         </span>
-                        {item.classDetail && (
-                          <span className="truncate text-xs font-normal leading-tight text-slate-400">
-                            {item.classDetail}
-                          </span>
-                        )}
                       </div>
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
-                        <div
-                          className={`h-full rounded-full transition-all ${style.bar}`}
-                          style={{ width: `${(item.count / maxCount) * 100}%` }}
-                        />
-                      </div>
-                      <span className="w-9 shrink-0 text-right text-xs text-slate-500">
+                      <span className="relative w-9 shrink-0 text-right text-xs font-medium text-slate-900">
                         {item.count}명
                       </span>
                     </li>

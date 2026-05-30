@@ -67,8 +67,9 @@ jobs:
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          ECR_PASSWORD=$(aws ecr get-login-password --region ${AWS_REGION})
+
           remote_script="set -e
-          export PATH=/usr/local/bin:/snap/bin:/usr/bin:\$PATH
           cd /home/ubuntu/daloa
           git reset --hard HEAD
           git pull origin main
@@ -77,7 +78,7 @@ jobs:
           echo 'NEXT_REVALIDATE_SECRET=${NEXT_REVALIDATE_SECRET}' >> .env
           sed -i '/^NEST_IMAGE=/d' .env
           echo 'NEST_IMAGE=${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}' >> .env
-          aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+          echo '${ECR_PASSWORD}' | docker login --username AWS --password-stdin ${ECR_REGISTRY}
           docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
           docker compose up -d
           docker restart daloa-nginx"

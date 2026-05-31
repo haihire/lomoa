@@ -49,8 +49,13 @@ jobs:
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG ./server
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker buildx create --use
+          docker buildx build \
+            --cache-from type=gha \
+            --cache-to type=gha,mode=max \
+            --tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            --push \
+            ./server
 
       - name: Deploy to EC2 via SSM
         env:
@@ -91,20 +96,20 @@ jobs:
 
           # 최대 3분 폴링 (EC2는 pull+start만 하므로 충분)
           wait_exit=1
-          for i in $(seq 1 18); do
+          for i in $(seq 1 36); do
             status=$(aws ssm get-command-invocation \
               --region "$AWS_REGION" \
               --command-id "$command_id" \
               --instance-id "$EC2_INSTANCE_ID" \
               --query 'Status' \
               --output text 2>/dev/null || echo "Pending")
-            echo "[${i}/18] SSM status: $status"
+            echo "[${i}/36] SSM status: $status"
             if [ "$status" = "Success" ]; then
               wait_exit=0; break
             elif [ "$status" = "Failed" ] || [ "$status" = "Cancelled" ] || [ "$status" = "TimedOut" ]; then
               wait_exit=1; break
             fi
-            sleep 10
+            sleep 5
           done
 
           aws ssm get-command-invocation \

@@ -81,7 +81,8 @@ jobs:
           echo '${ECR_PASSWORD}' | docker login --username AWS --password-stdin ${ECR_REGISTRY}
           docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
           docker compose up -d
-          docker restart daloa-nginx"
+          docker restart daloa-nginx
+          docker image prune -f"
 
           encoded=$(printf '%s' "$remote_script" | base64 -w0)
 

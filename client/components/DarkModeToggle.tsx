@@ -6,10 +6,13 @@ export default function DarkModeToggle() {
     const style = document.createElement("style");
     style.textContent = "* { transition: none !important; }";
     document.head.appendChild(style);
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("theme", next ? "dark" : "light");
-    void document.documentElement.offsetHeight;
-    document.head.removeChild(style);
+    try {
+      document.documentElement.classList.toggle("dark", next);
+      localStorage.setItem("theme", next ? "dark" : "light");
+      void document.documentElement.offsetHeight;
+    } finally {
+      document.head.removeChild(style);
+    }
   };
 
   return (

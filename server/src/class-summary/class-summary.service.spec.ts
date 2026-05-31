@@ -30,6 +30,7 @@ function createService(localDisable = 'true') {
       const values: Record<string, string | undefined> = {
         GEMINI_API_KEY: 'dummy-key',
         LOCAL_DISABLE_QUOTA_APIS: localDisable,
+        DISABLE_CLASS_SUMMARY: 'true',
       };
       return values[key];
     }),

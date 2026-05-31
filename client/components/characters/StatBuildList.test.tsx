@@ -78,7 +78,8 @@ describe("StatBuildList", () => {
     await userEvent.click(tabButton);
 
     await waitFor(() => {
-      expect(screen.getByText("스트라이커")).toBeInTheDocument();
+      // 탭 뷰는 각인명을 표시한다 (직업명은 표시하지 않음)
+      expect(screen.getByText("각인A")).toBeInTheDocument();
     });
   });
 
@@ -136,8 +137,8 @@ describe("StatBuildList", () => {
     await userEvent.clear(searchInput);
 
     await waitFor(() => {
-      // 기본 활성 탭의 데이터가 다시 표시됨
-      expect(screen.getByText("워로드")).toBeInTheDocument();
+      // 기본 활성 탭의 데이터가 다시 표시됨 (각인명 기준)
+      expect(screen.getByText("각인1")).toBeInTheDocument();
     });
   });
 
@@ -173,9 +174,9 @@ describe("StatBuildList", () => {
     // 두 번째 탭 클릭
     await userEvent.click(secondTab);
 
-    // 두 번째 탭의 데이터가 표시됨
+    // 두 번째 탭의 데이터가 표시됨 (각인명 기준)
     await waitFor(() => {
-      expect(screen.getByText("스트라이커")).toBeInTheDocument();
+      expect(screen.getByText("각인A")).toBeInTheDocument();
     });
 
     // 첫 번째 탭의 데이터는 더 이상 표시되지 않음

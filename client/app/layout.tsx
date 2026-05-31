@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
 import MonitoringBeacon from "@/components/MonitoringBeacon";
+import DarkModeToggle from "@/components/DarkModeToggle";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -61,9 +62,16 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        {/* 다크모드 FOUC 방지: hydration 전에 동기 실행 */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){var t=localStorage.getItem('theme'),d=window.matchMedia('(prefers-color-scheme: dark)').matches;if(t==='dark'||(!t&&d))document.documentElement.classList.add('dark')})()` }} />
+      </head>
       <body className="min-h-full flex flex-col">
         <GoogleAnalytics />
         <MonitoringBeacon />
+        <div className="fixed right-4 top-4 z-50">
+          <DarkModeToggle />
+        </div>
         {children}
         <Analytics />
       </body>

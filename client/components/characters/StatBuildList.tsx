@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { StatBuildTab } from "@/types";
 import { event as gaEvent } from "@/lib/gtag";
 
@@ -55,6 +55,19 @@ export default function StatBuildList({ tabs }: Props) {
         .filter((g) => g.matched.length > 0)
     : [];
 
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => {
+    const update = () =>
+      setIsDark(document.documentElement.classList.contains("dark"));
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
   // 탭 뷰
   const current =
     safeTabs.find((t) => t.statBuild === activeTab) ?? safeTabs[0];
@@ -62,10 +75,10 @@ export default function StatBuildList({ tabs }: Props) {
   const maxCount = Math.max(...(current?.items?.map((i) => i.count) ?? [1]), 1);
 
   return (
-    <article className="flex max-h-[40vh] shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white/85 p-4 shadow-md backdrop-blur fade-in delay-1 sm:h-[calc((100vh-90px)/3)] sm:max-h-none">
+    <article className="flex max-h-[40vh] shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white/85 p-4 shadow-md backdrop-blur fade-in delay-1 dark:border-slate-700/70 dark:bg-slate-800/85 sm:h-[calc((100vh-90px)/3)] sm:max-h-none">
       <div className="mb-3 shrink-0 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold text-slate-900">
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
             특성 빌드 분포
           </h2>
         </div>
@@ -74,7 +87,7 @@ export default function StatBuildList({ tabs }: Props) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="직업·각인 검색"
-          className="mt-1 w-36 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700 outline-none placeholder:text-slate-300 focus:border-cyan-400 focus:bg-white transition"
+          className="mt-1 w-36 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700 outline-none placeholder:text-slate-300 focus:border-cyan-400 focus:bg-white transition dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:bg-slate-600"
         />
       </div>
 
@@ -83,7 +96,7 @@ export default function StatBuildList({ tabs }: Props) {
           /* ── 검색 결과 뷰 ── */
           <div className="flex-1 overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:theme(colors.slate.200)_transparent]">
             {searchGroups.length === 0 ? (
-              <p className="py-8 text-center text-sm text-slate-400">
+              <p className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">
                 검색 결과 없음
               </p>
             ) : (
@@ -119,26 +132,26 @@ export default function StatBuildList({ tabs }: Props) {
                         return (
                           <li
                             key={`${item.classDetail}-${idx}`}
-                            className="flex items-center gap-2 rounded-lg bg-cyan-50 py-0.5 ring-1 ring-cyan-200"
+                            className="flex items-center gap-2 rounded-lg bg-cyan-50 py-0.5 ring-1 ring-cyan-200 dark:bg-cyan-950/30 dark:ring-cyan-800"
                           >
                             <span className="w-4 shrink-0 text-center text-xs font-bold text-slate-400" />
                             <div className="flex w-32 shrink-0 flex-col">
-                              <span className="truncate text-xs font-semibold leading-tight text-cyan-700">
+                              <span className="truncate text-xs font-semibold leading-tight text-cyan-700 dark:text-cyan-300">
                                 {item.classEngraving}
                               </span>
                               {item.classDetail && (
-                                <span className="truncate text-xs font-normal leading-tight text-cyan-500">
+                                <span className="truncate text-xs font-normal leading-tight text-cyan-500 dark:text-cyan-400">
                                   {item.classDetail}
                                 </span>
                               )}
                             </div>
-                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
                               <div
                                 className="h-full rounded-full bg-cyan-400 transition-all"
                                 style={{ width: `${pct}%` }}
                               />
                             </div>
-                            <span className="w-10 shrink-0 text-right text-xs font-semibold text-cyan-600">
+                            <span className="w-10 shrink-0 text-right text-xs font-semibold text-cyan-600 dark:text-cyan-400">
                               {pct}%
                             </span>
                           </li>
@@ -203,7 +216,21 @@ export default function StatBuildList({ tabs }: Props) {
                 .sort((a, b) => b.count - a.count)
                 .map((item, idx) => {
                   const style = BUILD_STYLE[activeTab] ?? DEFAULT_STYLE;
-                  const fillOpacity = 0.12 + (item.count / maxCount) * 0.73;
+                  // 다크모드에서 최소 opacity를 높여 가장 옅은 항목도 보이게
+                  const minOpacity = isDark ? 0.28 : 0.12;
+                  const fillOpacity = minOpacity + (item.count / maxCount) * (0.85 - minOpacity);
+                  const onDark = fillOpacity >= 0.5;
+                  // 다크모드에서 fill이 옅을 때 글자가 어두워 안 보이는 문제 보정
+                  const textMain = onDark
+                    ? "text-white"
+                    : isDark
+                      ? "text-slate-200"
+                      : "text-slate-800";
+                  const textSub = onDark
+                    ? "text-white/80"
+                    : isDark
+                      ? "text-slate-300"
+                      : "text-slate-600";
                   return (
                     <li
                       key={`${item.classDetail}-${idx}`}
@@ -213,15 +240,15 @@ export default function StatBuildList({ tabs }: Props) {
                         className={`absolute inset-0 ${style.bar} transition-all`}
                         style={{ opacity: fillOpacity }}
                       />
-                      <span className="relative w-4 shrink-0 text-center text-xs font-bold text-slate-900">
+                      <span className={`relative w-4 shrink-0 text-center text-xs font-bold ${textMain}`}>
                         {idx + 1}
                       </span>
                       <div className="relative flex min-w-0 flex-1 flex-col">
-                        <span className="text-xs font-medium leading-tight text-slate-900">
+                        <span className={`text-xs font-medium leading-tight ${textMain}`}>
                           {item.classEngraving}
                         </span>
                       </div>
-                      <span className="relative w-9 shrink-0 text-right text-xs font-medium text-slate-900">
+                      <span className={`relative w-9 shrink-0 text-right text-xs font-medium ${textSub}`}>
                         {item.count}명
                       </span>
                     </li>
@@ -229,7 +256,7 @@ export default function StatBuildList({ tabs }: Props) {
                 })}
 
               {(!current || !current.items?.length) && (
-                <li className="py-8 text-center text-sm text-slate-400">
+                <li className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">
                   스탯 데이터 없음
                 </li>
               )}

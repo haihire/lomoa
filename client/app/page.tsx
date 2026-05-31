@@ -44,7 +44,11 @@ async function timedFetch<T>(label: string, url: string, revalidate: number) {
 export default async function Home() {
   const [sitesRes, statRes] = await Promise.all([
     timedFetch<Site[]>("sites", `${API}/api/sites`, 3600),
-    timedFetch<StatBuildTab[]>("stat-builds", `${API}/api/characters/stat-builds`, 300),
+    timedFetch<StatBuildTab[]>(
+      "stat-builds",
+      `${API}/api/characters/stat-builds`,
+      300,
+    ),
   ]);
 
   const sites = sitesRes.data;
@@ -58,8 +62,8 @@ export default async function Home() {
 
           <main className="flex flex-col gap-2">
             <header className="fade-in text-center">
-              <h1 className="text-lg font-bold tracking-tight text-slate-900 sm:text-xl">
-                관리자 - 로아 사이트 모음
+              <h1 className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-xl">
+                로아 사이트 모음
               </h1>
             </header>
 
@@ -77,12 +81,12 @@ export default async function Home() {
             <Suspense
               fallback={
                 <div className="animate-pulse space-y-2 pt-2">
-                  <div className="h-5 w-36 rounded bg-slate-200" />
+                  <div className="h-5 w-36 rounded bg-slate-200 dark:bg-slate-700" />
                   <div className="flex gap-3 overflow-hidden">
                     {[0, 1, 2].map((i) => (
                       <div
                         key={i}
-                        className="h-[190px] w-[270px] shrink-0 rounded-lg bg-slate-200"
+                        className="h-[190px] w-[270px] shrink-0 rounded-lg bg-slate-200 dark:bg-slate-700"
                       />
                     ))}
                   </div>
@@ -101,8 +105,8 @@ export default async function Home() {
         </div>
       </div>
 
-      <footer className="border-t border-slate-200/80 bg-slate-50/80 px-4 py-4 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-col gap-1 text-center text-xs text-slate-500 sm:text-sm">
+      <footer className="border-t border-slate-200/80 bg-slate-50/80 px-4 py-4 backdrop-blur dark:border-slate-700/80 dark:bg-slate-900/80">
+        <div className="mx-auto flex max-w-6xl flex-col gap-1 text-center text-xs text-slate-500 dark:text-slate-400 sm:text-sm">
           <p>© 2026 로아</p>
         </div>
       </footer>

@@ -339,15 +339,15 @@ export default function YoutubeList({
     <section className="fade-in">
       <div className="mb-0 flex flex-row items-center justify-between gap-2">
         <div className="flex items-baseline gap-2 min-w-0">
-          <h2 className="text-lg font-semibold text-slate-900">로아 영상</h2>
-          <span className="hidden text-xs text-slate-400 sm:inline">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">로아 영상</h2>
+          <span className="hidden text-xs text-slate-400 dark:text-slate-500 sm:inline">
             심심할 때 보는
           </span>
         </div>
         <div className="flex items-center gap-1 shrink-0 sm:gap-2">
           <button
             onClick={() => void handleRefresh()}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-red-300 hover:text-red-500 hover:shadow-md disabled:cursor-default disabled:opacity-40"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-red-300 hover:text-red-500 hover:shadow-md disabled:cursor-default disabled:opacity-40 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-red-700"
             aria-label="새로고침"
             disabled={loading || refreshing}
             title="최신 영상으로 새로고침"
@@ -367,7 +367,7 @@ export default function YoutubeList({
           </button>
           <button
             onClick={() => scroll("left")}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-xl text-slate-500 shadow-sm transition hover:border-red-300 hover:text-red-500 hover:shadow-md disabled:cursor-default disabled:opacity-40"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-xl text-slate-500 shadow-sm transition hover:border-red-300 hover:text-red-500 hover:shadow-md disabled:cursor-default disabled:opacity-40 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-red-700"
             aria-label="이전"
             disabled={loading || items.length === 0}
           >
@@ -375,7 +375,7 @@ export default function YoutubeList({
           </button>
           <button
             onClick={() => scroll("right")}
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-xl text-slate-500 shadow-sm transition hover:border-red-300 hover:text-red-500 hover:shadow-md disabled:cursor-default disabled:opacity-40"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-xl text-slate-500 shadow-sm transition hover:border-red-300 hover:text-red-500 hover:shadow-md disabled:cursor-default disabled:opacity-40 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:border-red-700"
             aria-label="다음"
             disabled={loading || items.length === 0}
           >
@@ -389,7 +389,7 @@ export default function YoutubeList({
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="w-[calc(50%-0.5rem)] shrink-0 animate-pulse rounded-xl bg-slate-100 sm:w-52"
+              className="w-[calc(50%-0.5rem)] shrink-0 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-700 sm:w-52"
               style={{ height: 160 }}
             />
           ))}
@@ -469,7 +469,7 @@ export default function YoutubeList({
                           }).catch(() => {});
                         }
                       }}
-                      className="flex flex-col h-full gap-2 rounded-xl border border-slate-200 bg-white p-2 transition-transform duration-150 hover:-translate-y-0.5 hover:border-red-300 hover:shadow-md"
+                      className="flex flex-col h-full gap-2 rounded-xl border border-slate-200 bg-white p-2 transition-transform duration-150 hover:-translate-y-0.5 hover:border-red-300 hover:shadow-md dark:border-slate-700 dark:bg-slate-800 dark:hover:border-red-700"
                     >
                       {v.thumbnailUrl && (
                         <div className="relative">
@@ -485,19 +485,19 @@ export default function YoutubeList({
                         </div>
                       )}
                       <div className="flex flex-col flex-1 justify-between gap-0.5 px-0.5 pb-0.5 min-h-0">
-                        <p className="line-clamp-2 text-xs font-medium text-slate-800 leading-snug">
+                        <p className="line-clamp-2 text-xs font-medium text-slate-800 leading-snug dark:text-slate-200">
                           {v.title}
                         </p>
                         <div className="mt-1 flex items-center justify-between">
-                          <span className="truncate text-[11px] text-slate-500">
+                          <span className="truncate text-[11px] text-slate-500 dark:text-slate-400">
                             {v.channelTitle}
                           </span>
-                          <span className="ml-1 shrink-0 text-[11px] text-slate-400">
+                          <span className="ml-1 shrink-0 text-[11px] text-slate-400 dark:text-slate-500">
                             {timeAgo(v.publishedAt)}
                           </span>
                         </div>
                         {v.viewCount > 0 && (
-                          <span className="text-[11px] text-slate-400">
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500">
                             조회수 {formatViewCount(v.viewCount)}
                           </span>
                         )}
@@ -512,8 +512,8 @@ export default function YoutubeList({
                 key="loading-more-indicator"
                 className="w-52 shrink-0 flex snap-start"
               >
-                <div className="flex h-full w-full flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-4 text-slate-500">
-                  <span className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-red-400" />
+                <div className="flex h-full w-full flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white p-4 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                  <span className="h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-red-400 dark:border-slate-600 dark:border-t-red-500" />
                   <span className="text-xs">불러오는 중...</span>
                 </div>
               </li>

@@ -60,17 +60,20 @@ describe("AdminLoginPage", () => {
     });
   });
 
-  it("게스트 아이디 채우기 버튼 클릭 시 아이디와 비밀번호가 채워짐", async () => {
+  it("게스트 로그인 버튼 클릭 시 guest 계정으로 자동 로그인", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }),
+    );
+
     render(<AdminLoginPage />);
 
     await userEvent.click(
-      screen.getByRole("button", { name: "게스트 아이디 채우기" }),
+      screen.getByRole("button", { name: "게스트 로그인" }),
     );
 
-    expect(screen.getByRole("textbox")).toHaveValue("guest");
-    const passwordInput = document.querySelector<HTMLInputElement>(
-      'input[type="password"]',
-    )!;
-    expect(passwordInput).toHaveValue("1237");
+    await waitFor(() => {
+      expect(replaceSpy).toHaveBeenCalledWith("/admin/monitoring");
+    });
   });
 });

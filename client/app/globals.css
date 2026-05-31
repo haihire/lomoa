@@ -1,10 +1,6 @@
 @import "tailwindcss";
 @custom-variant dark (&:is(.dark, .dark *));
 
-.no-transition * {
-  transition: none !important;
-}
-
 :root {
   --background: #ffffff;
   --foreground: #111827;

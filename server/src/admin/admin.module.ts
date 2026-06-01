@@ -15,6 +15,11 @@ import { MonitoringRepository } from './repositories/monitoring.repository';
 import { AdminAuthRepository } from './repositories/admin-auth.repository';
 import { AdminCharactersRepository } from './repositories/admin-characters.repository';
 import { AdminSyncRepository } from './repositories/admin-sync.repository';
+import { AdminInvenController } from './admin-inven.controller';
+import { AdminInvenRepository } from './repositories/admin-inven.repository';
+import { AdminInvenCronService } from './admin-inven-cron.service';
+import { AdminInvenPipelineService } from './admin-inven-pipeline.service';
+import { SiteExtractorService } from './site-extractor.service';
 
 @Module({
   imports: [StreamersModule, SitesModule],
@@ -25,6 +30,7 @@ import { AdminSyncRepository } from './repositories/admin-sync.repository';
     AdminCharactersController,
     AdminSyncController,
     AdminMonitoringController,
+    AdminInvenController,
   ],
   providers: [
     AdminAuthService,
@@ -36,6 +42,10 @@ import { AdminSyncRepository } from './repositories/admin-sync.repository';
     AdminAuthRepository,
     AdminCharactersRepository,
     AdminSyncRepository,
+    AdminInvenRepository,
+    AdminInvenCronService,
+    AdminInvenPipelineService,
+    SiteExtractorService,
   ],
   exports: [AdminAuthService],
 })

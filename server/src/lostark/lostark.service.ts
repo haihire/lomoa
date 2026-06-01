@@ -5,6 +5,8 @@ const BASE = 'https://developer-lostark.game.onstove.com';
 
 const RATE_LIMIT = 80; // 분당 최대 요청 수 (100회 한도의 80%)
 const WINDOW_MS = 60_000; // 1분 윈도우
+const MIN_INTERVAL_MS = Math.ceil(WINDOW_MS / RATE_LIMIT); // 호출 간 최소 간격 (burst 방지)
+const FETCH_TIMEOUT_MS = 10_000; // 단일 LostArk 호출 타임아웃 (응답 없으면 직렬 큐가 영구 정지하는 것 방지)
 
 @Injectable()
 export class LostarkService {
@@ -14,6 +16,7 @@ export class LostarkService {
   // 이중 체크용 윈도우 상태
   private windowStart = Date.now();
   private windowCount = 0;
+  private lastCallTime = 0;
 
   constructor(private readonly config: ConfigService) {}
 
@@ -29,6 +32,7 @@ export class LostarkService {
    * 이중 체크 rate limiter
    * ① 시간 체크: 1분 윈도우가 지났으면 카운터 리셋
    * ② 카운트 체크: 80회 도달 시 윈도우 종료까지 대기 후 리셋
+   * ③ 간격 체크: 호출 간 최소 750ms 유지 (burst → 401 방지)
    */
   private async rateCheck(): Promise<void> {
     const now = Date.now();
@@ -50,6 +54,12 @@ export class LostarkService {
       this.windowCount = 0;
     }
 
+    // ③ 간격 체크: 직전 호출로부터 MIN_INTERVAL_MS 미만이면 대기
+    const elapsed = Date.now() - this.lastCallTime;
+    if (elapsed < MIN_INTERVAL_MS) {
+      await new Promise<void>((r) => setTimeout(r, MIN_INTERVAL_MS - elapsed));
+    }
+    this.lastCallTime = Date.now();
     this.windowCount++;
   }
 
@@ -68,6 +78,7 @@ export class LostarkService {
       const enc = encodeURIComponent(characterName);
       const res = await fetch(`${BASE}/characters/${enc}/siblings`, {
         headers: this.getHeaders(),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (!res.ok) throw new Error(`siblings API error: ${res.status}`);
       const data: unknown = await res.json();
@@ -80,6 +91,7 @@ export class LostarkService {
       const enc = encodeURIComponent(characterName);
       const res = await fetch(`${BASE}/armories/characters/${enc}`, {
         headers: this.getHeaders(),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (!res.ok) throw new Error(`armory API error: ${res.status}`);
       const data: unknown = await res.json();

@@ -435,7 +435,7 @@ export class MonitoringRepository {
     const table = DOCKER_TABLE[container];
     await this.prisma.$executeRawUnsafe(
       `INSERT INTO ${table} (cpu_percent, mem_used_mb, mem_total_mb, mem_percent, created_at)
-       VALUES ($1, $2, $3, $4, NOW())`,
+       VALUES ($1::numeric, $2::numeric::int, $3::numeric::int, $4::numeric, NOW())`,
       input.cpuPercent,
       input.memUsedMb,
       input.memTotalMb,

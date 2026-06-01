@@ -81,6 +81,7 @@ jobs:
           docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
           docker compose up -d
           docker restart daloa-nginx
+          docker images '${ECR_REGISTRY}/${ECR_REPOSITORY}' --format '{{.Tag}} {{.ID}}' | grep -v '${IMAGE_TAG}' | awk '{print \$2}' | xargs -r docker rmi -f || true
           docker image prune -f"
 
           encoded=$(printf '%s' "$remote_script" | base64 -w0)

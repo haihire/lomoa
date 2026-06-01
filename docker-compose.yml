@@ -28,6 +28,7 @@ services:
       - daloa-net
 
   nest:
+    image: ${NEST_IMAGE:-daloa-nest:dev}
     build:
       context: ./server
       dockerfile: Dockerfile

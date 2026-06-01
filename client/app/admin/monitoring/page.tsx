@@ -14,6 +14,16 @@ interface ContainerStat {
   netOutMb: number;
 }
 
+interface HostStats {
+  cpuPercent: number;
+  memUsedMb: number;
+  memTotalMb: number;
+  memPercent: number;
+  diskUsedGb: number;
+  diskTotalGb: number;
+  diskPercent: number;
+}
+
 interface ContainerHistoryPoint {
   bucket: string;
   avgCpu: number;
@@ -89,6 +99,9 @@ function toFixedHundred<T extends { count: number }>(
 }
 
 let monitoringCache: Dashboard | null = null;
+let containersCache: ContainerStat[] | null = null;
+let hostCache: HostStats | null = null;
+const containerHistoryCache: Record<string, ContainerHistoryPoint[]> = {};
 
 export default function MonitoringPage() {
   const [data, setData] = useState<Dashboard>(monitoringCache ?? EMPTY_DASHBOARD);
@@ -98,7 +111,9 @@ export default function MonitoringPage() {
   const [activeChart, setActiveChart] = useState<string | null>(null);
   const [pageVisitDays, setPageVisitDays] = useState<7 | 30>(7);
   const [sectionTab, setSectionTab] = useState<"sites" | "stat-builds" | "youtube">("sites");
-  const [containers, setContainers] = useState<ContainerStat[]>([]);
+  const [containers, setContainers] = useState<ContainerStat[]>(containersCache ?? []);
+  const [host, setHost] = useState<HostStats | null>(hostCache);
+  const [containersLoading, setContainersLoading] = useState(containersCache === null);
   const [containerTab, setContainerTab] = useState<string>("전체");
   const [containerHistory, setContainerHistory] = useState<ContainerHistoryPoint[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -129,7 +144,11 @@ export default function MonitoringPage() {
           }
           prevVisitCountRef.current = nextVisitCount;
 
-          return { ...base, sectionSeries: prev.sectionSeries };
+          return {
+            ...base,
+            sectionSeries: prev.sectionSeries,
+            pageVisitSeries: prev.pageVisitSeries ?? base.pageVisitSeries,
+          };
         });
         hasLoadedRef.current = true;
       } catch {
@@ -153,9 +172,18 @@ export default function MonitoringPage() {
       try {
         const res = await fetch("/api/admin/monitoring/containers", { cache: "no-store" });
         if (!alive || !res.ok) return;
-        setContainers((await res.json()) as ContainerStat[]);
+        const raw = (await res.json()) as ContainerStat[] | { containers: ContainerStat[]; host: HostStats | null };
+        const parsed = Array.isArray(raw)
+          ? { containers: raw, host: null }
+          : { containers: raw.containers ?? [], host: raw.host ?? null };
+        containersCache = parsed.containers;
+        hostCache = parsed.host;
+        setContainers(parsed.containers);
+        setHost(parsed.host);
       } catch {
         // keep previous
+      } finally {
+        if (alive) setContainersLoading(false);
       }
     }
     void loadContainers();
@@ -169,8 +197,13 @@ export default function MonitoringPage() {
       return;
     }
     let alive = true;
-    setHistoryLoading(true);
-    setContainerHistory([]);
+    const cached = containerHistoryCache[containerTab];
+    if (cached) {
+      setContainerHistory(cached);
+    } else {
+      setHistoryLoading(true);
+      setContainerHistory([]);
+    }
     async function loadHistory() {
       try {
         const res = await fetch(
@@ -178,7 +211,9 @@ export default function MonitoringPage() {
           { cache: "no-store" },
         );
         if (!alive || !res.ok) return;
-        setContainerHistory((await res.json()) as ContainerHistoryPoint[]);
+        const data = (await res.json()) as ContainerHistoryPoint[];
+        containerHistoryCache[containerTab] = data;
+        setContainerHistory(data);
       } catch {
         // keep previous
       } finally {
@@ -325,20 +360,43 @@ export default function MonitoringPage() {
           </div>
 
           {containerTab === "전체" ? (
-            containers.length === 0 ? (
+            containersLoading ? (
+              <p className="text-xs text-[color:var(--admin-text-muted)]">불러오는 중...</p>
+            ) : containers.length === 0 ? (
               <p className="text-xs text-[color:var(--admin-text-muted)]">컨테이너 데이터 없음 (EC2 환경에서만 표시됩니다)</p>
             ) : (
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                {containers.map((c) => (
-                  <div key={c.name} className="rounded border border-[color:var(--admin-border)] p-2.5">
-                    <p className="mb-1.5 text-xs font-semibold">{c.label}</p>
-                    <div className="space-y-0.5 text-xs text-[color:var(--admin-text-muted)]">
-                      <p>CPU <span className="font-medium text-[color:var(--admin-text)]">{c.cpuPercent.toFixed(1)}%</span></p>
-                      <p>메모리 <span className="font-medium text-[color:var(--admin-text)]">{c.memUsedMb}MB</span> ({c.memPercent.toFixed(1)}%)</p>
-                      <p>↓{c.netInMb}MB · ↑{c.netOutMb}MB</p>
+              <div className="space-y-3">
+                {host && (
+                  <div className="rounded border border-[color:var(--admin-border)] bg-slate-50 p-2.5">
+                    <p className="mb-1.5 text-xs font-semibold text-[color:var(--admin-text)]">EC2 호스트 전체</p>
+                    <div className="grid gap-1 text-xs text-[color:var(--admin-text-muted)] sm:grid-cols-3">
+                      <p>CPU <span className="font-medium text-[color:var(--admin-text)]">{host.cpuPercent.toFixed(1)}%</span></p>
+                      <p>
+                        메모리 <span className="font-medium text-[color:var(--admin-text)]">{host.memPercent.toFixed(1)}%</span>
+                        <span className="ml-1">({host.memUsedMb}MB / {host.memTotalMb}MB)</span>
+                      </p>
+                      <p>
+                        디스크 <span className="font-medium text-[color:var(--admin-text)]">{host.diskPercent}%</span>
+                        <span className="ml-1">({host.diskUsedGb}GB / {host.diskTotalGb}GB)</span>
+                      </p>
                     </div>
                   </div>
-                ))}
+                )}
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {containers.map((c) => (
+                    <div key={c.name} className="rounded border border-[color:var(--admin-border)] p-2.5">
+                      <p className="mb-1.5 text-xs font-semibold">{c.label}</p>
+                      <div className="space-y-0.5 text-xs text-[color:var(--admin-text-muted)]">
+                        <p>CPU <span className="font-medium text-[color:var(--admin-text)]">{c.cpuPercent.toFixed(1)}%</span></p>
+                        <p>
+                          메모리 <span className="font-medium text-[color:var(--admin-text)]">{c.memPercent.toFixed(1)}%</span>
+                          <span className="ml-1">({c.memUsedMb}MB / {c.memTotalMb}MB)</span>
+                        </p>
+                        <p>NET ↓{c.netInMb}MB · ↑{c.netOutMb}MB</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )
           ) : (

@@ -41,6 +41,9 @@ server/logs/
 client/logs/
 crawlers/logs/
 
+# site-finder 크롤 산출물 (JSON, 디버그 HTML)
+site-finder/output/
+
 # TypeScript 빌드 캐시
 server/tsconfig.tsbuildinfo
 server/tsconfig.build.tsbuildinfo

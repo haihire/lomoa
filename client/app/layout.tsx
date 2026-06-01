@@ -3,7 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
 import MonitoringBeacon from "@/components/MonitoringBeacon";
-import DarkModeToggle from "@/components/DarkModeToggle";
+import DarkModeToggleGuard from "@/components/DarkModeToggleGuard";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -70,7 +70,7 @@ export default function RootLayout({
         <GoogleAnalytics />
         <MonitoringBeacon />
         <div className="fixed right-4 top-4 z-50">
-          <DarkModeToggle />
+          <DarkModeToggleGuard />
         </div>
         {children}
         <Analytics />

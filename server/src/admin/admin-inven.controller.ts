@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -29,7 +28,7 @@ export class AdminInvenController {
   /** 파이프라인 수동 실행 (크롤 → DB → 사이트 추천). master 전용. */
   @Post('pipeline/run')
   @UseGuards(AdminWriteGuard)
-  async runPipeline(@Body('date') date?: string) {
+  runPipeline(@Body('date') date?: string) {
     return this.pipeline.run(date);
   }
 

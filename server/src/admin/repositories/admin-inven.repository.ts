@@ -163,5 +163,4 @@ export class AdminInvenRepository {
       LIMIT ${limit} OFFSET ${offset}
     `;
   }
-
 }

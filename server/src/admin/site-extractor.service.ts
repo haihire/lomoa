@@ -30,22 +30,50 @@ export interface SiteCandidateDraft {
 
 // 추천에서 항상 제외할 도메인 (인벤 자체, 광고, 대형 플랫폼, daloa, 게임 공식)
 const EXCLUDE_DOMAINS = new Set([
-  'inven.co.kr', 'upload3.inven.co.kr', 'upload2.inven.co.kr',
-  'imart.inven.co.kr', 'm.inven.co.kr', 'pick.inven.co.kr',
+  'inven.co.kr',
+  'upload3.inven.co.kr',
+  'upload2.inven.co.kr',
+  'imart.inven.co.kr',
+  'm.inven.co.kr',
+  'pick.inven.co.kr',
   'lostark.inven.co.kr',
-  'daloa.kr', 'www.daloa.kr',
-  'youtube.com', 'youtu.be', 'm.youtube.com',
-  'x.com', 'twitter.com', 'google.com', 'share.google',
-  'chzzk.naver.com', 'naver.com', 'gall.dcinside.com',
-  'archive.md', 'archive.today', 'threads.com',
-  'ruliweb.com', 'm.ruliweb.com',
-  'gmarket.co.kr', 'link.gmarket.co.kr', 'danawa.com', 'prod.danawa.com',
-  'index.go.kr', 'go.kr',
-  'onstove.com', 'm-lostark.game.onstove.com', 'lostark.game.onstove.com',
+  'daloa.kr',
+  'www.daloa.kr',
+  'youtube.com',
+  'youtu.be',
+  'm.youtube.com',
+  'x.com',
+  'twitter.com',
+  'google.com',
+  'share.google',
+  'chzzk.naver.com',
+  'naver.com',
+  'gall.dcinside.com',
+  'archive.md',
+  'archive.today',
+  'threads.com',
+  'ruliweb.com',
+  'm.ruliweb.com',
+  'gmarket.co.kr',
+  'link.gmarket.co.kr',
+  'danawa.com',
+  'prod.danawa.com',
+  'index.go.kr',
+  'go.kr',
+  'onstove.com',
+  'm-lostark.game.onstove.com',
+  'lostark.game.onstove.com',
 ]);
 
 const MIN_MENTIONS = 2; // 최소 언급 횟수 (1회만 언급된 건 노이즈로 제외)
 const URL_RE = /https?:\/\/[^\s"<>)\]}]+/g;
+
+// URL 끝의 구두점·괄호·zero-width space(U+200B) 제거.
+// (소스에 U+200B 리터럴을 두지 않으려고 동적 생성)
+const TRAILING_RE = new RegExp(`[.,)\\]}${String.fromCharCode(0x200b)}]+$`);
+function stripTrail(url: string): string {
+  return url.replace(TRAILING_RE, '');
+}
 
 /**
  * 크롤된 게시글(본문+댓글)에서 외부 사이트 URL을 추출하고,
@@ -67,14 +95,20 @@ export class SiteExtractorService {
   /** 서브도메인 제거한 루트 도메인 (a.b.co.kr → b.co.kr) */
   rootDomain(domain: string): string {
     const parts = domain.split('.');
-    if (parts.length >= 3 && ['co', 'go', 'or', 'ne'].includes(parts[parts.length - 2])) {
+    if (
+      parts.length >= 3 &&
+      ['co', 'go', 'or', 'ne'].includes(parts[parts.length - 2])
+    ) {
       return parts.slice(-3).join('.');
     }
     return parts.length >= 2 ? parts.slice(-2).join('.') : domain;
   }
 
   private isExcluded(domain: string): boolean {
-    return EXCLUDE_DOMAINS.has(domain) || EXCLUDE_DOMAINS.has(this.rootDomain(domain));
+    return (
+      EXCLUDE_DOMAINS.has(domain) ||
+      EXCLUDE_DOMAINS.has(this.rootDomain(domain))
+    );
   }
 
   /**
@@ -102,8 +136,9 @@ export class SiteExtractorService {
       const blob = texts.join(' ');
       const matches = blob.match(URL_RE) ?? [];
 
-      for (let raw of matches) {
-        raw = raw.replace(/[.,)​]+$/, '');
+      for (const match of matches) {
+        // URL 끝의 구두점·괄호·zero-width space(U+200B) 제거
+        const raw = stripTrail(match);
         const domain = this.normalizeDomain(raw);
         if (!domain) continue;
         let entry = agg.get(domain);

@@ -78,9 +78,7 @@ export class ClassSummaryService implements OnModuleInit {
 
   async onModuleInit() {
     if (this.disabled) {
-      this.logger.log(
-        'DISABLE_CLASS_SUMMARY 활성화 — 초기 직업 크롤링 스킵',
-      );
+      this.logger.log('DISABLE_CLASS_SUMMARY 활성화 — 초기 직업 크롤링 스킵');
       return;
     }
 
@@ -99,9 +97,7 @@ export class ClassSummaryService implements OnModuleInit {
   @Cron('0 0 * * * *')
   async scheduledRun() {
     if (this.disabled) {
-      this.logger.log(
-        'DISABLE_CLASS_SUMMARY 활성화 — 시간별 직업 크롤링 스킵',
-      );
+      this.logger.log('DISABLE_CLASS_SUMMARY 활성화 — 시간별 직업 크롤링 스킵');
       return;
     }
 

@@ -18,7 +18,8 @@ const SITE_FINDER_DIR =
 // Python 실행 명령. Windows는 'python', Linux/Docker(Alpine)는 'python3'.
 // PYTHON_BIN 환경변수로 오버라이드 가능.
 const PYTHON_BIN =
-  process.env.PYTHON_BIN ?? (process.platform === 'win32' ? 'python' : 'python3');
+  process.env.PYTHON_BIN ??
+  (process.platform === 'win32' ? 'python' : 'python3');
 
 export interface PipelineStatus {
   running: boolean;
@@ -67,8 +68,8 @@ export class AdminInvenPipelineService {
     return { ...this.state };
   }
 
-  /** 파이프라인을 비동기로 시작한다. 이미 실행 중이면 무시. */
-  async run(targetDate?: string): Promise<{ started: boolean; reason?: string }> {
+  /** 파이프라인을 비동기로 시작한다(백그라운드). 이미 실행 중이면 무시. */
+  run(targetDate?: string): { started: boolean; reason?: string } {
     if (this.state.running) {
       return { started: false, reason: '이미 실행 중입니다' };
     }
@@ -135,13 +136,14 @@ export class AdminInvenPipelineService {
       this.state.message = `완료 (${date}) — 게시글 ${savedCount}개, 추천 후보 ${candCount}개`;
       this.state.finishedAt = new Date().toISOString();
       this.logger.log(`파이프라인 완료 (${date})`);
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '알 수 없는 오류';
       this.state.running = false;
       this.state.step = 'error';
-      this.state.error = e?.message ?? '알 수 없는 오류';
-      this.state.message = `실패: ${this.state.error}`;
+      this.state.error = msg;
+      this.state.message = `실패: ${msg}`;
       this.state.finishedAt = new Date().toISOString();
-      this.logger.error(`파이프라인 실패: ${this.state.error}`);
+      this.logger.error(`파이프라인 실패: ${msg}`);
     }
   }
 

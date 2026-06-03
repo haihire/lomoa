@@ -1,8 +1,9 @@
 import { Suspense } from "react";
 import StatBuildList from "@/components/characters/StatBuildList";
+import ClassSummaryList from "@/components/class-summary/ClassSummaryList";
 import SiteList from "@/components/sites/SiteList";
 import YoutubeSection from "@/components/youtube/YoutubeSection";
-import type { Site, StatBuildTab } from "@/types";
+import type { ClassSummary, Site, StatBuildTab } from "@/types";
 
 const API = process.env.NEST_API_URL ?? "http://localhost:3001";
 
@@ -42,17 +43,23 @@ async function timedFetch<T>(label: string, url: string, revalidate: number) {
 }
 
 export default async function Home() {
-  const [sitesRes, statRes] = await Promise.all([
+  const [sitesRes, statRes, summaryRes] = await Promise.all([
     timedFetch<Site[]>("sites", `${API}/api/sites`, 3600),
     timedFetch<StatBuildTab[]>(
       "stat-builds",
       `${API}/api/characters/stat-builds`,
       300,
     ),
+    timedFetch<ClassSummary[]>(
+      "class-summary",
+      `${API}/api/class-summary`,
+      3600,
+    ),
   ]);
 
   const sites = sitesRes.data;
   const statBuilds = statRes.data;
+  const summaries = Array.isArray(summaryRes.data) ? summaryRes.data : [];
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -71,6 +78,7 @@ export default async function Home() {
               <div className="grid gap-4 sm:grid-cols-[320px_minmax(0,1fr)]">
                 <div className="hidden h-full flex-col gap-4 sm:flex">
                   <StatBuildList tabs={statBuilds} />
+                  <ClassSummaryList summaries={summaries} />
                 </div>
                 <div>
                   <SiteList sites={sites} />
@@ -96,8 +104,9 @@ export default async function Home() {
               <YoutubeSection />
             </Suspense>
 
-            <div className="sm:hidden">
+            <div className="flex flex-col gap-4 sm:hidden">
               <StatBuildList tabs={statBuilds} />
+              <ClassSummaryList summaries={summaries} />
             </div>
           </main>
 

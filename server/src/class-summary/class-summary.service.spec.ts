@@ -2,13 +2,6 @@ import { ConfigService } from '@nestjs/config';
 import { ClassSummaryRepository } from './class-summary.repository';
 import { ClassSummaryService } from './class-summary.service';
 
-type MockRedis = {
-  get: jest.Mock;
-  set: jest.Mock;
-  incr: jest.Mock;
-  expire: jest.Mock;
-};
-
 function createService(localDisable = 'true') {
   const repo: Partial<Record<keyof ClassSummaryRepository, jest.Mock>> = {
     count: jest.fn(),
@@ -16,13 +9,6 @@ function createService(localDisable = 'true') {
     upsert: jest.fn(),
     findAll: jest.fn(),
     findOne: jest.fn(),
-  };
-
-  const redis: MockRedis = {
-    get: jest.fn(),
-    set: jest.fn(),
-    incr: jest.fn(),
-    expire: jest.fn(),
   };
 
   const config = {
@@ -37,7 +23,6 @@ function createService(localDisable = 'true') {
 
   const service = new ClassSummaryService(
     repo as never,
-    redis as never,
     config,
   );
   return { service, repo };

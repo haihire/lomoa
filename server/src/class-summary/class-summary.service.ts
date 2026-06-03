@@ -1,9 +1,7 @@
-﻿import { Injectable, Inject, Logger, OnModuleInit } from '@nestjs/common';
+﻿import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
-import type { Redis } from 'ioredis';
 import { createHash } from 'crypto';
-import { REDIS_CLIENT } from '../redis/redis.module';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -51,9 +49,6 @@ const CRAWL_PAGES = 3;
 // 직업 간 처리 간격 (70초 — 무료 티어 RPM 여유 확보)
 const STAGGER_DELAY_MS = 70_000;
 
-// Redis 키: 직업별 크롤링 제목 해시
-const hashKey = (className: string) => `class-summary:hash:${className}`;
-
 @Injectable()
 export class ClassSummaryService implements OnModuleInit {
   private readonly logger = new Logger(ClassSummaryService.name);
@@ -63,7 +58,6 @@ export class ClassSummaryService implements OnModuleInit {
 
   constructor(
     private readonly classSummaryRepo: ClassSummaryRepository,
-    @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly config: ConfigService,
   ) {
     this.quotaApisDisabled = isLocalQuotaApisDisabled(config);
@@ -144,7 +138,7 @@ export class ClassSummaryService implements OnModuleInit {
     }
   }
 
-  /** 단일 직업: 크롤링 → 해시 비교 → 변경 시에만 Gemini 호출. true=Gemini 호출함 */
+  /** 단일 직업: 크롤링 → 해시 비교(DB) → 변경 시에만 Gemini 호출. true=Gemini 호출함 */
   private async processClass(className: string): Promise<boolean> {
     const titles = await this.crawlTitles(className);
     if (titles.length === 0) {
@@ -152,27 +146,18 @@ export class ClassSummaryService implements OnModuleInit {
       return false;
     }
 
-    const currentHash = createHash('md5')
-      .update(titles.join('\n'))
-      .digest('hex');
-
-    // DB에 데이터가 있는 경우에만 해시 비교로 스킵
-    if (await this.classSummaryRepo.exists(className)) {
-      const prevHash = await this.redis.get(hashKey(className));
-      if (prevHash === currentHash) {
-        this.logger.debug(`[${className}] 변경 없음 — Gemini 스킵`);
-        return false;
-      }
+    const currentHash = createHash('md5').update(titles.join('\n')).digest('hex');
+    const existing = await this.classSummaryRepo.findOne(className);
+    if (existing && existing.titleHash === currentHash) {
+      this.logger.debug(`[${className}] 변경 없음 — Gemini 스킵`);
+      return false;
     }
 
     const summary = await this.summarize(className, titles);
-    if (!summary) return true; // Gemini 호출은 했으므로 true
+    if (!summary) return true;
 
-    await this.classSummaryRepo.upsert(className, summary);
-
-    await this.redis.set(hashKey(className), currentHash, 'EX', 25 * 60 * 60);
-
-    this.logger.log(`[${className}] 새 글 감지 → 한줄평 업데이트 완료`);
+    await this.classSummaryRepo.upsert(className, summary, currentHash);
+    this.logger.log(`[${className}] 한줄평 업데이트 완료`);
     return true;
   }
 
@@ -218,18 +203,6 @@ export class ClassSummaryService implements OnModuleInit {
   ): Promise<string | null> {
     if (!this.genAI) return null;
 
-    // 일일 한도 체크 (무료 티어: 20회/일 → 안전 마진 18회)
-    const MAX_DAILY_CALLS = 18;
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    const dailyKey = `gemini:daily-count:${today}`;
-    const currentCount = parseInt((await this.redis.get(dailyKey)) ?? '0', 10);
-    if (currentCount >= MAX_DAILY_CALLS) {
-      this.logger.warn(
-        `[${className}] 오늘 Gemini 일일 한도(${MAX_DAILY_CALLS}회) 도달 — 스킵`,
-      );
-      return null;
-    }
-
     const model = this.genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
     });
@@ -245,9 +218,6 @@ export class ClassSummaryService implements OnModuleInit {
       try {
         const result = await model.generateContent(prompt);
         const text = result.response.text().trim().replace(/\n.*/s, '');
-        // 성공 시 카운터 증가, TTL 25시간
-        await this.redis.incr(dailyKey);
-        await this.redis.expire(dailyKey, 25 * 60 * 60);
         return text;
       } catch (e: unknown) {
         const msg = toErrorMessage(e);

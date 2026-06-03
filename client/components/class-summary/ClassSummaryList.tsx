@@ -115,10 +115,10 @@ export default function ClassSummaryList({ summaries }: Props) {
     : tabFiltered;
 
   return (
-    <section className="flex h-[calc((100vh-90px)/3)] flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white/80 shadow-md backdrop-blur">
+    <section className="flex h-[calc((100vh-90px)/3)] flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white/80 shadow-md backdrop-blur dark:border-slate-700/70 dark:bg-slate-800/80">
       {/* 헤더 */}
-      <div className="shrink-0 flex items-center justify-between border-b border-slate-100 px-4 py-3 gap-3">
-        <h2 className="text-lg font-semibold text-slate-900 shrink-0">
+      <div className="shrink-0 flex items-center justify-between border-b border-slate-100 px-4 py-3 gap-3 dark:border-slate-700">
+        <h2 className="text-lg font-semibold text-slate-900 shrink-0 dark:text-slate-100">
           AI 직업 한줄평
         </h2>
         <input
@@ -126,14 +126,14 @@ export default function ClassSummaryList({ summaries }: Props) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="직업 검색"
-          className="w-28 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700 outline-none placeholder:text-slate-300 focus:border-cyan-400 focus:bg-white transition"
+          className="w-28 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700 outline-none placeholder:text-slate-300 focus:border-cyan-400 focus:bg-white transition dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:bg-slate-600"
         />
       </div>
 
       {/* 본문: 왼쪽 분류 탭 + 오른쪽 직업 목록 */}
       <div className="flex flex-1 min-h-0">
         {/* 왼쪽 분류 탭 */}
-        <ul className="shrink-0 flex flex-col border-r border-slate-100 py-1 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:theme(colors.slate.200)_transparent]">
+        <ul className="shrink-0 flex flex-col border-r border-slate-100 py-1 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:theme(colors.slate.200)_transparent] dark:border-slate-700">
           {TABS.map((t) => {
             const active = activeTab === t.label && !q;
             const color = TAB_COLOR[t.label];
@@ -147,8 +147,8 @@ export default function ClassSummaryList({ summaries }: Props) {
                   }}
                   className={`w-full px-3 py-2 text-left text-xs font-semibold whitespace-nowrap transition-colors border-r-2 ${
                     active
-                      ? `${color.text} border-current bg-slate-50`
-                      : "border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                      ? `${color.text} border-current bg-slate-50 dark:bg-slate-700/50`
+                      : "border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-50 dark:text-slate-500 dark:hover:text-slate-300 dark:hover:bg-slate-700/50"
                   }`}
                 >
                   {t.label}
@@ -161,21 +161,21 @@ export default function ClassSummaryList({ summaries }: Props) {
         {/* 오른쪽 직업 + 한줄평 목록 */}
         <ul key={activeTab} className="flex-1 min-h-0 overflow-y-auto p-2 flex flex-col gap-1.5 [scrollbar-width:thin] [scrollbar-color:theme(colors.slate.200)_transparent]">
           {filtered.length === 0 ? (
-            <li className="py-8 text-center text-sm text-slate-400">
+            <li className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">
               데이터 집계 중…
             </li>
           ) : (
             filtered.map((s) => (
               <li
                 key={s.className}
-                className="flex flex-col items-start gap-1 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2"
+                className="flex flex-col items-start gap-1 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-700/50"
               >
                 <span
                   className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${CLASS_GROUP[s.className] ?? "bg-slate-100 text-slate-600"}`}
                 >
                   {s.className}
                 </span>
-                <p className="pl-2 text-xs leading-snug text-slate-700">
+                <p className="pl-2 text-xs leading-snug text-slate-700 dark:text-slate-300">
                   {s.summary}
                 </p>
               </li>

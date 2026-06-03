@@ -10829,18 +10829,21 @@ export namespace Prisma {
     class_name: string | null
     summary: string | null
     updated_at: Date | null
+    title_hash: string | null
   }
 
   export type Loa_class_summariesMaxAggregateOutputType = {
     class_name: string | null
     summary: string | null
     updated_at: Date | null
+    title_hash: string | null
   }
 
   export type Loa_class_summariesCountAggregateOutputType = {
     class_name: number
     summary: number
     updated_at: number
+    title_hash: number
     _all: number
   }
 
@@ -10849,18 +10852,21 @@ export namespace Prisma {
     class_name?: true
     summary?: true
     updated_at?: true
+    title_hash?: true
   }
 
   export type Loa_class_summariesMaxAggregateInputType = {
     class_name?: true
     summary?: true
     updated_at?: true
+    title_hash?: true
   }
 
   export type Loa_class_summariesCountAggregateInputType = {
     class_name?: true
     summary?: true
     updated_at?: true
+    title_hash?: true
     _all?: true
   }
 
@@ -10940,6 +10946,7 @@ export namespace Prisma {
     class_name: string
     summary: string | null
     updated_at: Date | null
+    title_hash: string | null
     _count: Loa_class_summariesCountAggregateOutputType | null
     _min: Loa_class_summariesMinAggregateOutputType | null
     _max: Loa_class_summariesMaxAggregateOutputType | null
@@ -10963,27 +10970,31 @@ export namespace Prisma {
     class_name?: boolean
     summary?: boolean
     updated_at?: boolean
+    title_hash?: boolean
   }, ExtArgs["result"]["loa_class_summaries"]>
 
   export type loa_class_summariesSelectCreateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
     class_name?: boolean
     summary?: boolean
     updated_at?: boolean
+    title_hash?: boolean
   }, ExtArgs["result"]["loa_class_summaries"]>
 
   export type loa_class_summariesSelectUpdateManyAndReturn<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetSelect<{
     class_name?: boolean
     summary?: boolean
     updated_at?: boolean
+    title_hash?: boolean
   }, ExtArgs["result"]["loa_class_summaries"]>
 
   export type loa_class_summariesSelectScalar = {
     class_name?: boolean
     summary?: boolean
     updated_at?: boolean
+    title_hash?: boolean
   }
 
-  export type loa_class_summariesOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"class_name" | "summary" | "updated_at", ExtArgs["result"]["loa_class_summaries"]>
+  export type loa_class_summariesOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"class_name" | "summary" | "updated_at" | "title_hash", ExtArgs["result"]["loa_class_summaries"]>
 
   export type $loa_class_summariesPayload<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     name: "loa_class_summaries"
@@ -10992,6 +11003,7 @@ export namespace Prisma {
       class_name: string
       summary: string | null
       updated_at: Date | null
+      title_hash: string | null
     }, ExtArgs["result"]["loa_class_summaries"]>
     composites: {}
   }
@@ -11418,6 +11430,7 @@ export namespace Prisma {
     readonly class_name: FieldRef<"loa_class_summaries", 'String'>
     readonly summary: FieldRef<"loa_class_summaries", 'String'>
     readonly updated_at: FieldRef<"loa_class_summaries", 'DateTime'>
+    readonly title_hash: FieldRef<"loa_class_summaries", 'String'>
   }
     
 
@@ -16562,7 +16575,8 @@ export namespace Prisma {
   export const Loa_class_summariesScalarFieldEnum: {
     class_name: 'class_name',
     summary: 'summary',
-    updated_at: 'updated_at'
+    updated_at: 'updated_at',
+    title_hash: 'title_hash'
   };
 
   export type Loa_class_summariesScalarFieldEnum = (typeof Loa_class_summariesScalarFieldEnum)[keyof typeof Loa_class_summariesScalarFieldEnum]
@@ -17286,12 +17300,14 @@ export namespace Prisma {
     class_name?: StringFilter<"loa_class_summaries"> | string
     summary?: StringNullableFilter<"loa_class_summaries"> | string | null
     updated_at?: DateTimeNullableFilter<"loa_class_summaries"> | Date | string | null
+    title_hash?: StringNullableFilter<"loa_class_summaries"> | string | null
   }
 
   export type loa_class_summariesOrderByWithRelationInput = {
     class_name?: SortOrder
     summary?: SortOrderInput | SortOrder
     updated_at?: SortOrderInput | SortOrder
+    title_hash?: SortOrderInput | SortOrder
   }
 
   export type loa_class_summariesWhereUniqueInput = Prisma.AtLeast<{
@@ -17301,12 +17317,14 @@ export namespace Prisma {
     NOT?: loa_class_summariesWhereInput | loa_class_summariesWhereInput[]
     summary?: StringNullableFilter<"loa_class_summaries"> | string | null
     updated_at?: DateTimeNullableFilter<"loa_class_summaries"> | Date | string | null
+    title_hash?: StringNullableFilter<"loa_class_summaries"> | string | null
   }, "class_name">
 
   export type loa_class_summariesOrderByWithAggregationInput = {
     class_name?: SortOrder
     summary?: SortOrderInput | SortOrder
     updated_at?: SortOrderInput | SortOrder
+    title_hash?: SortOrderInput | SortOrder
     _count?: loa_class_summariesCountOrderByAggregateInput
     _max?: loa_class_summariesMaxOrderByAggregateInput
     _min?: loa_class_summariesMinOrderByAggregateInput
@@ -17319,6 +17337,7 @@ export namespace Prisma {
     class_name?: StringWithAggregatesFilter<"loa_class_summaries"> | string
     summary?: StringNullableWithAggregatesFilter<"loa_class_summaries"> | string | null
     updated_at?: DateTimeNullableWithAggregatesFilter<"loa_class_summaries"> | Date | string | null
+    title_hash?: StringNullableWithAggregatesFilter<"loa_class_summaries"> | string | null
   }
 
   export type loa_sitesWhereInput = {
@@ -18234,42 +18253,49 @@ export namespace Prisma {
     class_name: string
     summary?: string | null
     updated_at?: Date | string | null
+    title_hash?: string | null
   }
 
   export type loa_class_summariesUncheckedCreateInput = {
     class_name: string
     summary?: string | null
     updated_at?: Date | string | null
+    title_hash?: string | null
   }
 
   export type loa_class_summariesUpdateInput = {
     class_name?: StringFieldUpdateOperationsInput | string
     summary?: NullableStringFieldUpdateOperationsInput | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    title_hash?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type loa_class_summariesUncheckedUpdateInput = {
     class_name?: StringFieldUpdateOperationsInput | string
     summary?: NullableStringFieldUpdateOperationsInput | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    title_hash?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type loa_class_summariesCreateManyInput = {
     class_name: string
     summary?: string | null
     updated_at?: Date | string | null
+    title_hash?: string | null
   }
 
   export type loa_class_summariesUpdateManyMutationInput = {
     class_name?: StringFieldUpdateOperationsInput | string
     summary?: NullableStringFieldUpdateOperationsInput | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    title_hash?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type loa_class_summariesUncheckedUpdateManyInput = {
     class_name?: StringFieldUpdateOperationsInput | string
     summary?: NullableStringFieldUpdateOperationsInput | string | null
     updated_at?: NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+    title_hash?: NullableStringFieldUpdateOperationsInput | string | null
   }
 
   export type loa_sitesCreateInput = {
@@ -19252,18 +19278,21 @@ export namespace Prisma {
     class_name?: SortOrder
     summary?: SortOrder
     updated_at?: SortOrder
+    title_hash?: SortOrder
   }
 
   export type loa_class_summariesMaxOrderByAggregateInput = {
     class_name?: SortOrder
     summary?: SortOrder
     updated_at?: SortOrder
+    title_hash?: SortOrder
   }
 
   export type loa_class_summariesMinOrderByAggregateInput = {
     class_name?: SortOrder
     summary?: SortOrder
     updated_at?: SortOrder
+    title_hash?: SortOrder
   }
 
   export type DateTimeNullableWithAggregatesFilter<$PrismaModel = never> = {

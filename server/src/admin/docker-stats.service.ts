@@ -205,7 +205,11 @@ export class DockerStatsService {
     }
   }
 
-  private async readHostMemory(): Promise<{ usedMb: number; totalMb: number; percent: number } | null> {
+  private async readHostMemory(): Promise<{
+    usedMb: number;
+    totalMb: number;
+    percent: number;
+  } | null> {
     try {
       const text = await readFile('/proc/meminfo', 'utf8');
       const totalKb = Number(/MemTotal:\s+(\d+)/.exec(text)?.[1] ?? 0);
@@ -244,7 +248,11 @@ export class DockerStatsService {
     }
   }
 
-  private async readDiskUsage(): Promise<{ usedGb: number; totalGb: number; percent: number } | null> {
+  private async readDiskUsage(): Promise<{
+    usedGb: number;
+    totalGb: number;
+    percent: number;
+  } | null> {
     try {
       const { stdout } = await execFileAsync('df', ['/'], { timeout: 5000 });
       const lines = stdout.trim().split('\n');

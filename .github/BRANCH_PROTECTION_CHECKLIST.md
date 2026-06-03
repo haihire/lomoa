@@ -33,7 +33,7 @@
 | ------------------------------------ | -------------------------------------------------- | --------- | -------------------------------- |
 | client lint                          | PR CI                                              | 필수      | main 머지 전 자동 검증           |
 | server lint                          | PR CI                                              | 필수      | main 머지 전 자동 검증           |
-| 서버 단위 테스트 + 클라이언트 테스트 | [../scripts/test.ps1](../scripts/test.ps1) + PR CI | 필수      | 로컬과 CI가 같은 하네스 사용     |
+| 서버 단위 테스트 + 클라이언트 테스트 | PR CI                                              | 필수      | CI 자동 검증                     |
 | client build                         | PR CI                                              | 필수      | 배포 전 빌드 가능 여부 확인      |
 | server build                         | PR CI                                              | 필수      | Nest 빌드 깨짐 방지              |
 | server E2E                           | Server E2E workflow                                | 선택      | main 반영 후 또는 수동 실행 권장 |

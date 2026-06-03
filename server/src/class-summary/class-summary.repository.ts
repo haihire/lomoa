@@ -5,6 +5,7 @@ export interface ClassSummaryRecord {
   className: string;
   summary: string;
   updatedAt: string;
+  titleHash: string | null;
 }
 
 @Injectable()
@@ -26,17 +27,19 @@ export class ClassSummaryRepository {
     return row !== null;
   }
 
-  async upsert(className: string, summary: string): Promise<void> {
+  async upsert(className: string, summary: string, titleHash: string): Promise<void> {
     await this.prisma.loa_class_summaries.upsert({
       where: { class_name: className },
       create: {
         class_name: className,
         summary,
         updated_at: new Date(),
+        title_hash: titleHash,
       },
       update: {
         summary,
         updated_at: new Date(),
+        title_hash: titleHash,
       },
     });
   }
@@ -46,7 +49,8 @@ export class ClassSummaryRepository {
       `SELECT
          class_name AS "className",
          COALESCE(summary, '') AS summary,
-         TO_CHAR(updated_at, 'YYYY-MM-DD HH24:MI') AS "updatedAt"
+         TO_CHAR(updated_at, 'YYYY-MM-DD HH24:MI') AS "updatedAt",
+         title_hash AS "titleHash"
        FROM loa_class_summaries
        ORDER BY array_position($1::text[], class_name) NULLS LAST, class_name ASC`,
       order,
@@ -59,7 +63,8 @@ export class ClassSummaryRepository {
       SELECT
         class_name AS "className",
         COALESCE(summary, '') AS summary,
-        TO_CHAR(updated_at, 'YYYY-MM-DD HH24:MI') AS "updatedAt"
+        TO_CHAR(updated_at, 'YYYY-MM-DD HH24:MI') AS "updatedAt",
+        title_hash AS "titleHash"
       FROM loa_class_summaries
       WHERE class_name = ${className}
       LIMIT 1

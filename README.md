@@ -42,4 +42,4 @@
 - feat/admin
 - fix/mainPage
 - feat/mainPage
-- chore/docs
+- ci/cd

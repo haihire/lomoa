@@ -25,7 +25,9 @@ function createService() {
 function mockExecSuccess(stdout: string) {
   (mockedExecFile as jest.Mock).mockImplementation((...args: unknown[]) => {
     const callback = args[args.length - 1];
-    (callback as (err: null, out: { stdout: string }) => void)(null, { stdout });
+    (callback as (err: null, out: { stdout: string }) => void)(null, {
+      stdout,
+    });
   });
 }
 

@@ -320,66 +320,99 @@ export class MonitoringRepository {
   }
 
   async findPageVisitSeriesDays(days: number) {
+    // generate_series로 전체 날짜 축을 만들고 LEFT JOIN → 데이터 없는 날도 0으로 표시
     return this.prisma.$queryRaw<
       Array<{ bucket: string; count: bigint | number }>
     >`
-      SELECT TO_CHAR(DATE(last_seen_at), 'MM-DD') AS bucket,
-             COUNT(*) AS count
-      FROM apm_page_visits
-      WHERE last_seen_at >= NOW() - (${days}::int * INTERVAL '1 day')
-      GROUP BY DATE(last_seen_at)
-      ORDER BY DATE(last_seen_at) ASC
+      SELECT TO_CHAR(d.day, 'MM-DD') AS bucket,
+             COUNT(p.id) AS count
+      FROM generate_series(
+             (CURRENT_DATE - ((${days}::int - 1) * INTERVAL '1 day'))::date,
+             CURRENT_DATE,
+             INTERVAL '1 day'
+           ) AS d(day)
+      LEFT JOIN apm_page_visits p ON DATE(p.last_seen_at) = d.day
+      GROUP BY d.day
+      ORDER BY d.day ASC
     `;
   }
 
   async findSiteClickSeriesDays(days: number) {
+    // 데이터 없는 날도 0으로 채우기 (generate_series + LEFT JOIN)
     return this.prisma.$queryRaw<
       Array<{ bucket: string; count: bigint | number }>
     >`
-      SELECT TO_CHAR(day_key, 'MM-DD') AS bucket,
-             COUNT(*) AS count
-      FROM (
-        SELECT DATE(created_at) AS day_key
-        FROM apm_site_clicks
-        WHERE created_at >= NOW() - (${days}::int * INTERVAL '1 day')
-      ) AS site_click_days
-      GROUP BY day_key
-      ORDER BY day_key ASC
+      SELECT TO_CHAR(d.day, 'MM-DD') AS bucket,
+             COUNT(c.id) AS count
+      FROM generate_series(
+             (CURRENT_DATE - ((${days}::int - 1) * INTERVAL '1 day'))::date,
+             CURRENT_DATE,
+             INTERVAL '1 day'
+           ) AS d(day)
+      LEFT JOIN apm_site_clicks c ON DATE(c.created_at) = d.day
+      GROUP BY d.day
+      ORDER BY d.day ASC
     `;
   }
 
   async findYoutubeClickSeriesDays(days: number) {
+    // 데이터 없는 날도 0으로 채우기 (generate_series + LEFT JOIN)
     return this.prisma.$queryRaw<
       Array<{ bucket: string; count: bigint | number }>
     >`
-      SELECT TO_CHAR(day_key, 'MM-DD') AS bucket,
-             COUNT(*) AS count
-      FROM (
-        SELECT DATE(created_at) AS day_key
-        FROM apm_youtube_clicks
-        WHERE created_at >= NOW() - (${days}::int * INTERVAL '1 day')
-      ) AS youtube_click_days
-      GROUP BY day_key
-      ORDER BY day_key ASC
+      SELECT TO_CHAR(d.day, 'MM-DD') AS bucket,
+             COUNT(c.id) AS count
+      FROM generate_series(
+             (CURRENT_DATE - ((${days}::int - 1) * INTERVAL '1 day'))::date,
+             CURRENT_DATE,
+             INTERVAL '1 day'
+           ) AS d(day)
+      LEFT JOIN apm_youtube_clicks c ON DATE(c.created_at) = d.day
+      GROUP BY d.day
+      ORDER BY d.day ASC
     `;
   }
 
   async findSectionSeries(bucketHours: number, rangeDays: number) {
+    // 빈 시간 버킷도 채우기:
+    //   buckets(시간축) × labels(api_key) 조합을 만들고 실제 데이터를 LEFT JOIN.
+    //   데이터 없는 버킷은 count=0, avg_duration_ms=NULL(서비스에서 0 처리).
+    //   버킷 경계는 epoch floor 방식으로 통일해 데이터 버킷과 정확히 매칭.
     return this.prisma.$queryRaw<TimedGroupRow[]>`
-      SELECT TO_CHAR(bucket_start, 'MM-DD HH24:MI') AS bucket,
-             api_key AS label,
-             ROUND(AVG(duration_ms))::int AS avg_duration_ms,
-             COUNT(*) AS count
-      FROM (
+      WITH probe_buckets AS (
         SELECT
           TO_TIMESTAMP(FLOOR(EXTRACT(EPOCH FROM created_at) / (${bucketHours} * 3600)) * (${bucketHours} * 3600)) AS bucket_start,
           api_key,
           duration_ms
         FROM monitoring_api_probes
         WHERE created_at >= NOW() - (${rangeDays}::int * INTERVAL '1 day')
-      ) AS probe_buckets
-      GROUP BY bucket_start, api_key
-      ORDER BY bucket_start ASC
+      ),
+      labels AS (
+        SELECT DISTINCT api_key FROM probe_buckets
+      ),
+      buckets AS (
+        SELECT TO_TIMESTAMP(
+                 FLOOR(EXTRACT(EPOCH FROM g) / (${bucketHours} * 3600)) * (${bucketHours} * 3600)
+               ) AS bucket_start
+        FROM generate_series(
+               NOW() - (${rangeDays}::int * INTERVAL '1 day'),
+               NOW(),
+               (${bucketHours} * INTERVAL '1 hour')
+             ) AS g
+      ),
+      grid AS (
+        SELECT DISTINCT b.bucket_start, l.api_key
+        FROM buckets b CROSS JOIN labels l
+      )
+      SELECT TO_CHAR(grid.bucket_start, 'MM-DD HH24:MI') AS bucket,
+             grid.api_key AS label,
+             ROUND(AVG(pb.duration_ms))::int AS avg_duration_ms,
+             COUNT(pb.duration_ms) AS count
+      FROM grid
+      LEFT JOIN probe_buckets pb
+        ON pb.bucket_start = grid.bucket_start AND pb.api_key = grid.api_key
+      GROUP BY grid.bucket_start, grid.api_key
+      ORDER BY grid.bucket_start ASC
     `;
   }
 

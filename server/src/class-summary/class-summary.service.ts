@@ -1,6 +1,7 @@
 ﻿import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
+import { createHash } from 'crypto';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -137,7 +138,7 @@ export class ClassSummaryService implements OnModuleInit {
     }
   }
 
-  /** 단일 직업: 크롤링 → Gemini 호출. true=Gemini 호출함 */
+  /** 단일 직업: 크롤링 → 해시 비교(DB) → 변경 시에만 Gemini 호출. true=Gemini 호출함 */
   private async processClass(className: string): Promise<boolean> {
     const titles = await this.crawlTitles(className);
     if (titles.length === 0) {
@@ -145,10 +146,17 @@ export class ClassSummaryService implements OnModuleInit {
       return false;
     }
 
+    const currentHash = createHash('md5').update(titles.join('\n')).digest('hex');
+    const existing = await this.classSummaryRepo.findOne(className);
+    if (existing && existing.titleHash === currentHash) {
+      this.logger.debug(`[${className}] 변경 없음 — Gemini 스킵`);
+      return false;
+    }
+
     const summary = await this.summarize(className, titles);
     if (!summary) return true;
 
-    await this.classSummaryRepo.upsert(className, summary);
+    await this.classSummaryRepo.upsert(className, summary, currentHash);
     this.logger.log(`[${className}] 한줄평 업데이트 완료`);
     return true;
   }

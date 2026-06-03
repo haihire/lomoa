@@ -59,7 +59,7 @@ export default async function Home() {
 
   const sites = sitesRes.data;
   const statBuilds = statRes.data;
-  const summaries = summaryRes.data;
+  const summaries = Array.isArray(summaryRes.data) ? summaryRes.data : [];
 
   return (
     <div className="flex min-h-screen flex-col">

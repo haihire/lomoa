@@ -201,7 +201,8 @@ exports.Prisma.Loa_classScalarFieldEnum = {
 exports.Prisma.Loa_class_summariesScalarFieldEnum = {
   class_name: 'class_name',
   summary: 'summary',
-  updated_at: 'updated_at'
+  updated_at: 'updated_at',
+  title_hash: 'title_hash'
 };
 
 exports.Prisma.Loa_sitesScalarFieldEnum = {

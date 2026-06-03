@@ -39,11 +39,12 @@ jobs:
           set -e
 
           # Script to run on the remote EC2 host.
+          # SQL 파일은 호스트(EC2)에 있으므로 -f(컨테이너 내부 경로) 대신 stdin으로 전달
           remote_script="cd /home/ubuntu/daloa \
             && git pull origin main \
             && test -f \"$SQL_FILE\" \
             && set -a && source .env && set +a \
-            && docker exec -i daloa-postgres psql -U \"\$DB_USER\" -d \"\$DB_NAME\" -f \"$SQL_FILE\" \
+            && docker exec -i daloa-postgres psql -U \"\$DB_USER\" -d \"\$DB_NAME\" < \"$SQL_FILE\" \
             && echo MIGRATION_OK"
 
           if [ "$RESTART_NEST" = "true" ]; then

@@ -7,7 +7,7 @@ import { REDIS_CLIENT } from '../redis/redis.module';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { isLocalQuotaApisDisabled } from '../common/local-dev-flags';
+import { isClassSummaryDisabled } from '../common/local-dev-flags';
 import { ClassSummaryRepository } from './class-summary.repository';
 
 // 직업별 인벤 게시판 ID (기획.md 기준)
@@ -58,7 +58,7 @@ const hashKey = (className: string) => `class-summary:hash:${className}`;
 export class ClassSummaryService implements OnModuleInit {
   private readonly logger = new Logger(ClassSummaryService.name);
   private readonly genAI: GoogleGenerativeAI | null;
-  private readonly quotaApisDisabled: boolean;
+  private readonly disabled: boolean;
   private isRunning = false; // 동시 실행 방지
 
   constructor(
@@ -66,7 +66,7 @@ export class ClassSummaryService implements OnModuleInit {
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
     private readonly config: ConfigService,
   ) {
-    this.quotaApisDisabled = isLocalQuotaApisDisabled(config);
+    this.disabled = isClassSummaryDisabled(config);
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (apiKey) {
       this.genAI = new GoogleGenerativeAI(apiKey);
@@ -77,10 +77,8 @@ export class ClassSummaryService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    if (this.quotaApisDisabled) {
-      this.logger.log(
-        'LOCAL_DISABLE_QUOTA_APIS 활성화 — 초기 직업 크롤링 스킵',
-      );
+    if (this.disabled) {
+      this.logger.log('DISABLE_CLASS_SUMMARY 활성화 — 초기 직업 크롤링 스킵');
       return;
     }
 
@@ -98,10 +96,8 @@ export class ClassSummaryService implements OnModuleInit {
   /** 매 시간 정각 실행 — 29개 직업을 60분에 걸쳐 분산 처리 */
   @Cron('0 0 * * * *')
   async scheduledRun() {
-    if (this.quotaApisDisabled) {
-      this.logger.log(
-        'LOCAL_DISABLE_QUOTA_APIS 활성화 — 시간별 직업 크롤링 스킵',
-      );
+    if (this.disabled) {
+      this.logger.log('DISABLE_CLASS_SUMMARY 활성화 — 시간별 직업 크롤링 스킵');
       return;
     }
 
@@ -111,9 +107,9 @@ export class ClassSummaryService implements OnModuleInit {
 
   /** 전체 직업 순차 처리 */
   async runAll() {
-    if (this.quotaApisDisabled) {
+    if (this.disabled) {
       this.logger.log(
-        'LOCAL_DISABLE_QUOTA_APIS 활성화 — Gemini 직업 요약 갱신 스킵',
+        'DISABLE_CLASS_SUMMARY 활성화 — Gemini 직업 요약 갱신 스킵',
       );
       return;
     }

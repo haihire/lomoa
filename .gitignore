@@ -27,12 +27,8 @@ crawlers/.venv/
 # Redis
 dump.rdb
 
-# DB 덤프 파일
-scripts/dump.sql
-scripts/node_modules/
-scripts/package.json
-scripts/package-lock.json
-scripts/seed-sites.ps1
+# 로컬 스크립트 (개발 환경 전용)
+scripts/
 
 # 로컬 개발 오버라이드 (EC2에는 불필요)
 docker-compose.override.yml
@@ -44,6 +40,9 @@ server-stderr.log
 server/logs/
 client/logs/
 crawlers/logs/
+
+# site-finder 크롤 산출물 (JSON, 디버그 HTML)
+site-finder/output/
 
 # TypeScript 빌드 캐시
 server/tsconfig.tsbuildinfo

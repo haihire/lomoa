@@ -120,7 +120,7 @@ export default function SiteList({ sites }: Props) {
   };
 
   return (
-    <section className="flex max-h-[56vh] flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white/80 shadow-md backdrop-blur sm:h-[590px] sm:max-h-none">
+    <section className="flex max-h-[56vh] flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white/80 shadow-md backdrop-blur dark:border-slate-700/70 dark:bg-slate-800/80 sm:h-[590px] sm:max-h-none">
       <div className="stagger flex-1 overflow-y-auto p-4 pr-5 sm:pr-4">
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {sorted.map((site) => {
@@ -188,8 +188,8 @@ export default function SiteList({ sites }: Props) {
                   }}
                   className={`relative flex h-full cursor-pointer select-none flex-col rounded-xl border p-3 transition-all duration-200 hover:-translate-y-0.5 ${
                     isFav
-                      ? "border-blue-400 bg-blue-50 hover:border-blue-500 hover:bg-blue-50"
-                      : "border-slate-200 bg-slate-50 hover:border-cyan-300 hover:bg-cyan-50"
+                      ? "border-blue-400 bg-blue-50 hover:border-blue-500 hover:bg-blue-50 dark:bg-blue-950/40 dark:border-blue-700 dark:hover:bg-blue-950/60"
+                      : "border-slate-200 bg-slate-50 hover:border-cyan-300 hover:bg-cyan-50 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-cyan-700 dark:hover:bg-cyan-950/30"
                   }`}
                 >
                   {/* 별 버튼 */}
@@ -230,19 +230,19 @@ export default function SiteList({ sites }: Props) {
                           }}
                         />
                       )}
-                      <span className="truncate font-semibold text-slate-900">
+                      <span className="truncate font-semibold text-slate-900 dark:text-slate-100">
                         {site.name}
                       </span>
                     </div>
                     <span
                       className={`shrink-0 rounded-full px-2 py-0.5 text-xs text-white ${
-                        isFav ? "bg-blue-500" : "bg-slate-900"
+                        isFav ? "bg-blue-500" : "bg-slate-700 dark:bg-slate-600"
                       }`}
                     >
                       {site.category}
                     </span>
                   </div>
-                  <p className="mt-1.5 text-sm text-slate-600">
+                  <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-400">
                     {site.description}
                   </p>
                 </div>

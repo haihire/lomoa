@@ -12,6 +12,7 @@ export interface SiteRecord {
 
 export interface AdminSiteRecord extends SiteRecord {
   is_active: number;
+  click_count: number;
 }
 
 export interface SiteCheckRecord {
@@ -63,23 +64,36 @@ export class SitesRepository {
   }
 
   async findAdminAll(): Promise<AdminSiteRecord[]> {
-    const rows = await this.prisma.loa_sites.findMany({
-      orderBy: { seq: 'asc' },
-      select: {
-        seq: true,
-        name: true,
-        href: true,
-        category: true,
-        description: true,
-        icon: true,
-        is_active: true,
-      },
-    });
+    // 각 사이트의 클릭수(apm_site_clicks)를 href 기준으로 LEFT JOIN해 함께 반환
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        seq: bigint;
+        name: string;
+        href: string;
+        category: string | null;
+        description: string | null;
+        icon: string | null;
+        is_active: boolean | null;
+        click_count: bigint;
+      }>
+    >`
+      SELECT s.seq, s.name, s.href, s.category, s.description, s.icon, s.is_active,
+             COUNT(c.id) AS click_count
+      FROM loa_sites s
+      LEFT JOIN apm_site_clicks c ON c.site_href = s.href
+      GROUP BY s.seq, s.name, s.href, s.category, s.description, s.icon, s.is_active
+      ORDER BY s.seq ASC
+    `;
 
     return rows.map((row) => ({
-      ...row,
       seq: Number(row.seq),
+      name: row.name,
+      href: row.href,
+      category: row.category,
+      description: row.description,
+      icon: row.icon,
       is_active: row.is_active ? 1 : 0,
+      click_count: Number(row.click_count),
     }));
   }
 
@@ -91,6 +105,50 @@ export class SitesRepository {
     return row ? { seq: Number(row.seq) } : null;
   }
 
+  /**
+   * 특정 사이트(seq)의 최근 N일 일별 클릭수.
+   * generate_series로 빈 날짜도 0으로 채워서 반환 (오래된→최신 순).
+   */
+  async findClickSeries(
+    seq: number,
+    days: number,
+  ): Promise<Array<{ bucket: string; count: number }>> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{ bucket: string; count: bigint }>
+    >`
+      SELECT TO_CHAR(d.day, 'MM-DD') AS bucket,
+             COUNT(c.id) AS count
+      FROM generate_series(
+             (CURRENT_DATE - ((${days}::int - 1) * INTERVAL '1 day'))::date,
+             CURRENT_DATE,
+             INTERVAL '1 day'
+           ) AS d(day)
+      LEFT JOIN loa_sites s ON s.seq = ${seq}
+      LEFT JOIN apm_site_clicks c
+        ON c.site_href = s.href AND DATE(c.created_at) = d.day
+      GROUP BY d.day
+      ORDER BY d.day ASC
+    `;
+    return rows.map((r) => ({ bucket: r.bucket, count: Number(r.count) }));
+  }
+
+  /**
+   * 최근 N일 동안 "한 사이트가 하루에 받은 최대 클릭수".
+   * 모든 사이트 그래프의 Y축을 이 값으로 통일하면 사이트 간 인기 비교가 가능.
+   */
+  async findMaxDailyClicks(days: number): Promise<number> {
+    const rows = await this.prisma.$queryRaw<Array<{ max_daily: bigint }>>`
+      SELECT COALESCE(MAX(cnt), 0) AS max_daily
+      FROM (
+        SELECT site_href, DATE(created_at) AS d, COUNT(*) AS cnt
+        FROM apm_site_clicks
+        WHERE created_at >= (CURRENT_DATE - ((${days}::int - 1) * INTERVAL '1 day'))
+        GROUP BY site_href, DATE(created_at)
+      ) t
+    `;
+    return Number(rows[0]?.max_daily ?? 0);
+  }
+
   async create(input: SiteCreateInput): Promise<number> {
     const created = await this.prisma.loa_sites.create({
       data: input,
@@ -100,6 +158,18 @@ export class SitesRepository {
   }
 
   async update(seq: number, input: SiteUpdateInput): Promise<void> {
+    if (input.name !== undefined) {
+      const current = await this.prisma.loa_sites.findUnique({
+        where: { seq },
+        select: { href: true },
+      });
+      if (current) {
+        await this.prisma.$executeRaw`
+          UPDATE apm_site_clicks SET site_name = ${input.name}
+          WHERE site_href = ${current.href}
+        `;
+      }
+    }
     await this.prisma.loa_sites.update({
       where: { seq },
       data: input,
@@ -110,6 +180,18 @@ export class SitesRepository {
     seq: number,
     input: Pick<SiteCreateInput, 'name' | 'description'>,
   ): Promise<void> {
+    if (input.name !== undefined) {
+      const current = await this.prisma.loa_sites.findUnique({
+        where: { seq },
+        select: { href: true },
+      });
+      if (current) {
+        await this.prisma.$executeRaw`
+          UPDATE apm_site_clicks SET site_name = ${input.name}
+          WHERE site_href = ${current.href}
+        `;
+      }
+    }
     await this.prisma.loa_sites.update({
       where: { seq },
       data: input,

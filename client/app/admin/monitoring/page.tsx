@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
 interface ContainerStat {
   name: string;
@@ -45,12 +53,22 @@ type Dashboard = {
   };
   siteClickSeries: { minute: string; count: number }[];
   youtubeClickSeries: { minute: string; count: number }[];
-  sectionSeries: { minute: string; label: string; avgDurationMs: number; count: number }[];
+  sectionSeries: {
+    minute: string;
+    label: string;
+    avgDurationMs: number;
+    count: number;
+  }[];
   pageVisits: { path: string; device_type: string; count: number }[];
   countryVisits: { countryCode: string; count: number }[];
   osVisits: { osName: string; count: number }[];
   browserVisits: { browserName: string; count: number }[];
-  siteClicks: { siteName: string; siteHref: string; siteCategory: string; clickCount: number }[];
+  siteClicks: {
+    siteName: string;
+    siteHref: string;
+    siteCategory: string;
+    clickCount: number;
+  }[];
   pageVisitSeries?: { day: string; count: number }[];
   youtubeClickTotal?: number;
 };
@@ -104,18 +122,28 @@ let hostCache: HostStats | null = null;
 const containerHistoryCache: Record<string, ContainerHistoryPoint[]> = {};
 
 export default function MonitoringPage() {
-  const [data, setData] = useState<Dashboard>(monitoringCache ?? EMPTY_DASHBOARD);
+  const [data, setData] = useState<Dashboard>(
+    monitoringCache ?? EMPTY_DASHBOARD,
+  );
   const [loading, setLoading] = useState(monitoringCache === null);
   const [liveVisitDelta, setLiveVisitDelta] = useState(0);
   const [deviceTab, setDeviceTab] = useState<"device" | "browser">("device");
   const [activeChart, setActiveChart] = useState<string | null>(null);
   const [pageVisitDays, setPageVisitDays] = useState<7 | 30>(7);
-  const [sectionTab, setSectionTab] = useState<"sites" | "stat-builds" | "youtube">("sites");
-  const [containers, setContainers] = useState<ContainerStat[]>(containersCache ?? []);
+  const [sectionTab, setSectionTab] = useState<
+    "sites" | "stat-builds" | "youtube"
+  >("sites");
+  const [containers, setContainers] = useState<ContainerStat[]>(
+    containersCache ?? [],
+  );
   const [host, setHost] = useState<HostStats | null>(hostCache);
-  const [containersLoading, setContainersLoading] = useState(containersCache === null);
+  const [containersLoading, setContainersLoading] = useState(
+    containersCache === null,
+  );
   const [containerTab, setContainerTab] = useState<string>("전체");
-  const [containerHistory, setContainerHistory] = useState<ContainerHistoryPoint[]>([]);
+  const [containerHistory, setContainerHistory] = useState<
+    ContainerHistoryPoint[]
+  >([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const hasLoadedRef = useRef(false);
   const prevVisitCountRef = useRef(0);
@@ -125,7 +153,10 @@ export default function MonitoringPage() {
     async function load(initial = false) {
       if (initial && monitoringCache === null) setLoading(true);
       try {
-        const dashboardRes = await fetch("/api/admin/monitoring/dashboard?days=7", { cache: "no-store" });
+        const dashboardRes = await fetch(
+          "/api/admin/monitoring/dashboard?days=7",
+          { cache: "no-store" },
+        );
         if (!alive) return;
 
         const dashboard = dashboardRes.ok
@@ -170,9 +201,13 @@ export default function MonitoringPage() {
     let alive = true;
     async function loadContainers() {
       try {
-        const res = await fetch("/api/admin/monitoring/containers", { cache: "no-store" });
+        const res = await fetch("/api/admin/monitoring/containers", {
+          cache: "no-store",
+        });
         if (!alive || !res.ok) return;
-        const raw = (await res.json()) as ContainerStat[] | { containers: ContainerStat[]; host: HostStats | null };
+        const raw = (await res.json()) as
+          | ContainerStat[]
+          | { containers: ContainerStat[]; host: HostStats | null };
         const parsed = Array.isArray(raw)
           ? { containers: raw, host: null }
           : { containers: raw.containers ?? [], host: raw.host ?? null };
@@ -188,7 +223,10 @@ export default function MonitoringPage() {
     }
     void loadContainers();
     const timer = setInterval(() => void loadContainers(), 10_000);
-    return () => { alive = false; clearInterval(timer); };
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -221,7 +259,9 @@ export default function MonitoringPage() {
       }
     }
     void loadHistory();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [containerTab]);
 
   useEffect(() => {
@@ -238,7 +278,8 @@ export default function MonitoringPage() {
           ...prev,
           sectionSeries: dashboard.sectionSeries ?? prev.sectionSeries,
           pageVisitSeries: dashboard.pageVisitSeries ?? prev.pageVisitSeries,
-          youtubeClickTotal: dashboard.youtubeClickTotal ?? prev.youtubeClickTotal,
+          youtubeClickTotal:
+            dashboard.youtubeClickTotal ?? prev.youtubeClickTotal,
         }));
       } catch {
         // Keep existing data if fetch fails.
@@ -250,7 +291,10 @@ export default function MonitoringPage() {
     };
   }, [pageVisitDays]);
 
-  const siteClickTotal = useMemo(() => data.siteClicks.reduce((sum, item) => sum + item.clickCount, 0), [data.siteClicks]);
+  const siteClickTotal = useMemo(
+    () => data.siteClicks.reduce((sum, item) => sum + item.clickCount, 0),
+    [data.siteClicks],
+  );
 
   const deviceSummary = useMemo(() => {
     const summaryCounts = data.summary.deviceCounts;
@@ -259,7 +303,13 @@ export default function MonitoringPage() {
       const desktop = summaryCounts.desktop ?? 0;
       const tablet = summaryCounts.tablet ?? 0;
       const bot = summaryCounts.bot ?? 0;
-      return { total: mobile + desktop + tablet + bot, mobile, desktop, tablet, bot };
+      return {
+        total: mobile + desktop + tablet + bot,
+        mobile,
+        desktop,
+        tablet,
+        bot,
+      };
     }
 
     let mobile = 0;
@@ -272,7 +322,13 @@ export default function MonitoringPage() {
       else if (row.device_type === "tablet") tablet += row.count;
       else if (row.device_type === "bot") bot += row.count;
     }
-    return { total: mobile + desktop + tablet + bot, mobile, desktop, tablet, bot };
+    return {
+      total: mobile + desktop + tablet + bot,
+      mobile,
+      desktop,
+      tablet,
+      bot,
+    };
   }, [data.pageVisits, data.summary.deviceCounts]);
 
   const deviceItems = useMemo(() => {
@@ -290,7 +346,12 @@ export default function MonitoringPage() {
   );
 
   const siteClickShareItems = useMemo(
-    () => toFixedHundred(data.siteClicks.slice(0, 4).map((item) => ({ ...item, count: item.clickCount }))),
+    () =>
+      toFixedHundred(
+        data.siteClicks
+          .slice(0, 4)
+          .map((item) => ({ ...item, count: item.clickCount })),
+      ),
     [data.siteClicks],
   );
 
@@ -305,7 +366,12 @@ export default function MonitoringPage() {
       const name = row.osName.toLowerCase();
       if (name.includes("windows")) counters.Windows += row.count;
       else if (name.includes("linux")) counters["GNU/Linux"] += row.count;
-      else if (name.includes("ios") || name.includes("iphone") || name.includes("ipad")) counters.iOS += row.count;
+      else if (
+        name.includes("ios") ||
+        name.includes("iphone") ||
+        name.includes("ipad")
+      )
+        counters.iOS += row.count;
       else if (name.includes("mac")) counters.Mac += row.count;
     }
     return toFixedHundred([
@@ -316,14 +382,17 @@ export default function MonitoringPage() {
     ]);
   }, [data.osVisits]);
 
-  const normalizeLabel = (value: string) => (value.toUpperCase() === "UNKNOWN" ? "기타" : value);
+  const normalizeLabel = (value: string) =>
+    value.toUpperCase() === "UNKNOWN" ? "기타" : value;
 
   return (
     <div className="flex h-full flex-col">
       <div className="mb-5 shrink-0 flex items-start justify-between gap-4">
         <div>
           <h1 className="admin-page-title">모니터링</h1>
-          <p className="admin-page-subtitle mt-1">운영 상태와 추세를 빠르게 확인합니다.</p>
+          <p className="admin-page-subtitle mt-1">
+            운영 상태와 추세를 빠르게 확인합니다.
+          </p>
         </div>
         <div className="flex shrink-0 items-center pt-1 text-xs text-[color:var(--admin-text-muted)]">
           평균 응답
@@ -346,13 +415,20 @@ export default function MonitoringPage() {
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm font-semibold">컨테이너 현황</p>
             <div className="flex gap-1">
-              <button type="button" onClick={() => setContainerTab("전체")}
-                className={`admin-btn admin-btn-sm ${containerTab === "전체" ? "admin-btn-primary" : "admin-btn-secondary"}`}>
+              <button
+                type="button"
+                onClick={() => setContainerTab("전체")}
+                className={`admin-btn admin-btn-sm ${containerTab === "전체" ? "admin-btn-primary" : "admin-btn-secondary"}`}
+              >
                 전체
               </button>
               {containers.map((c) => (
-                <button key={c.name} type="button" onClick={() => setContainerTab(c.label)}
-                  className={`admin-btn admin-btn-sm ${containerTab === c.label ? "admin-btn-primary" : "admin-btn-secondary"}`}>
+                <button
+                  key={c.name}
+                  type="button"
+                  onClick={() => setContainerTab(c.label)}
+                  className={`admin-btn admin-btn-sm ${containerTab === c.label ? "admin-btn-primary" : "admin-btn-secondary"}`}
+                >
                   {c.label}
                 </button>
               ))}
@@ -361,38 +437,74 @@ export default function MonitoringPage() {
 
           {containerTab === "전체" ? (
             containersLoading ? (
-              <p className="text-xs text-[color:var(--admin-text-muted)]">불러오는 중...</p>
+              <p className="text-xs text-[color:var(--admin-text-muted)]">
+                불러오는 중...
+              </p>
             ) : containers.length === 0 ? (
-              <p className="text-xs text-[color:var(--admin-text-muted)]">컨테이너 데이터 없음 (EC2 환경에서만 표시됩니다)</p>
+              <p className="text-xs text-[color:var(--admin-text-muted)]">
+                컨테이너 데이터 없음 (EC2 환경에서만 표시됩니다)
+              </p>
             ) : (
               <div className="space-y-3">
                 {host && (
                   <div className="rounded border border-[color:var(--admin-border)] bg-slate-50 p-2.5">
-                    <p className="mb-1.5 text-xs font-semibold text-[color:var(--admin-text)]">EC2 호스트 전체</p>
+                    <p className="mb-1.5 text-xs font-semibold text-[color:var(--admin-text)]">
+                      EC2 호스트 전체
+                    </p>
                     <div className="grid gap-1 text-xs text-[color:var(--admin-text-muted)] sm:grid-cols-3">
-                      <p>CPU <span className="font-medium text-[color:var(--admin-text)]">{host.cpuPercent.toFixed(1)}%</span></p>
                       <p>
-                        메모리 <span className="font-medium text-[color:var(--admin-text)]">{host.memPercent.toFixed(1)}%</span>
-                        <span className="ml-1">({host.memUsedMb}MB / {host.memTotalMb}MB)</span>
+                        CPU{" "}
+                        <span className="font-medium text-[color:var(--admin-text)]">
+                          {host.cpuPercent.toFixed(1)}%
+                        </span>
                       </p>
                       <p>
-                        디스크 <span className="font-medium text-[color:var(--admin-text)]">{host.diskPercent}%</span>
-                        <span className="ml-1">({host.diskUsedGb}GB / {host.diskTotalGb}GB)</span>
+                        메모리{" "}
+                        <span className="font-medium text-[color:var(--admin-text)]">
+                          {host.memPercent.toFixed(1)}%
+                        </span>
+                        <span className="ml-1">
+                          ({host.memUsedMb}MB / {host.memTotalMb}MB)
+                        </span>
+                      </p>
+                      <p>
+                        디스크{" "}
+                        <span className="font-medium text-[color:var(--admin-text)]">
+                          {host.diskPercent}%
+                        </span>
+                        <span className="ml-1">
+                          ({host.diskUsedGb}GB / {host.diskTotalGb}GB)
+                        </span>
                       </p>
                     </div>
                   </div>
                 )}
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                   {containers.map((c) => (
-                    <div key={c.name} className="rounded border border-[color:var(--admin-border)] p-2.5">
+                    <div
+                      key={c.name}
+                      className="rounded border border-[color:var(--admin-border)] p-2.5"
+                    >
                       <p className="mb-1.5 text-xs font-semibold">{c.label}</p>
                       <div className="space-y-0.5 text-xs text-[color:var(--admin-text-muted)]">
-                        <p>CPU <span className="font-medium text-[color:var(--admin-text)]">{c.cpuPercent.toFixed(1)}%</span></p>
                         <p>
-                          메모리 <span className="font-medium text-[color:var(--admin-text)]">{c.memPercent.toFixed(1)}%</span>
-                          <span className="ml-1">({c.memUsedMb}MB / {c.memTotalMb}MB)</span>
+                          CPU{" "}
+                          <span className="font-medium text-[color:var(--admin-text)]">
+                            {c.cpuPercent.toFixed(1)}%
+                          </span>
                         </p>
-                        <p>NET ↓{c.netInMb}MB · ↑{c.netOutMb}MB</p>
+                        <p>
+                          메모리{" "}
+                          <span className="font-medium text-[color:var(--admin-text)]">
+                            {c.memPercent.toFixed(1)}%
+                          </span>
+                          <span className="ml-1">
+                            ({c.memUsedMb}MB / {c.memTotalMb}MB)
+                          </span>
+                        </p>
+                        <p>
+                          NET ↓{c.netInMb}MB · ↑{c.netOutMb}MB
+                        </p>
                       </div>
                     </div>
                   ))}
@@ -402,44 +514,92 @@ export default function MonitoringPage() {
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
               <div>
-                <p className="mb-1 text-xs text-[color:var(--admin-text-muted)]">CPU % (7일)</p>
+                <p className="mb-1 text-xs text-[color:var(--admin-text-muted)]">
+                  CPU % (7일)
+                </p>
                 <div className="h-28">
                   {historyLoading ? (
-                    <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">불러오는 중...</div>
+                    <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">
+                      불러오는 중...
+                    </div>
                   ) : containerHistory.length === 0 ? (
-                    <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">데이터 없음</div>
+                    <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">
+                      데이터 없음
+                    </div>
                   ) : (
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={containerHistory}
+                      <AreaChart
+                        data={containerHistory}
                         onMouseEnter={() => setActiveChart("container-cpu")}
-                        onMouseLeave={() => setActiveChart(null)}>
+                        onMouseLeave={() => setActiveChart(null)}
+                      >
                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis dataKey="bucket" tick={{ fontSize: 9, fill: "#6b7280" }} />
-                        <YAxis tick={{ fontSize: 10, fill: "#6b7280" }} unit="%" />
-                        <Tooltip active={activeChart === "container-cpu"} formatter={(v) => [`${v ?? 0}%`, "CPU"]} wrapperStyle={{ pointerEvents: "none" }} />
-                        <Area type="linear" dataKey="avgCpu" stroke="#2563eb" fill="#bfdbfe" name="CPU %" />
+                        <XAxis
+                          dataKey="bucket"
+                          tick={{ fontSize: 9, fill: "#6b7280" }}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 10, fill: "#6b7280" }}
+                          unit="%"
+                        />
+                        <Tooltip
+                          active={activeChart === "container-cpu"}
+                          formatter={(v) => [`${v ?? 0}%`, "CPU"]}
+                          wrapperStyle={{ pointerEvents: "none" }}
+                        />
+                        <Area
+                          type="linear"
+                          dataKey="avgCpu"
+                          stroke="#2563eb"
+                          fill="#bfdbfe"
+                          name="CPU %"
+                        />
                       </AreaChart>
                     </ResponsiveContainer>
                   )}
                 </div>
               </div>
               <div>
-                <p className="mb-1 text-xs text-[color:var(--admin-text-muted)]">메모리 % (7일)</p>
+                <p className="mb-1 text-xs text-[color:var(--admin-text-muted)]">
+                  메모리 % (7일)
+                </p>
                 <div className="h-28">
                   {historyLoading ? (
-                    <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">불러오는 중...</div>
+                    <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">
+                      불러오는 중...
+                    </div>
                   ) : containerHistory.length === 0 ? (
-                    <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">데이터 없음</div>
+                    <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">
+                      데이터 없음
+                    </div>
                   ) : (
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={containerHistory}
+                      <AreaChart
+                        data={containerHistory}
                         onMouseEnter={() => setActiveChart("container-mem")}
-                        onMouseLeave={() => setActiveChart(null)}>
+                        onMouseLeave={() => setActiveChart(null)}
+                      >
                         <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis dataKey="bucket" tick={{ fontSize: 9, fill: "#6b7280" }} />
-                        <YAxis tick={{ fontSize: 10, fill: "#6b7280" }} unit="%" />
-                        <Tooltip active={activeChart === "container-mem"} formatter={(v) => [`${v ?? 0}%`, "메모리"]} wrapperStyle={{ pointerEvents: "none" }} />
-                        <Area type="linear" dataKey="avgMem" stroke="#7c3aed" fill="#ede9fe" name="메모리 %" />
+                        <XAxis
+                          dataKey="bucket"
+                          tick={{ fontSize: 9, fill: "#6b7280" }}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 10, fill: "#6b7280" }}
+                          unit="%"
+                        />
+                        <Tooltip
+                          active={activeChart === "container-mem"}
+                          formatter={(v) => [`${v ?? 0}%`, "메모리"]}
+                          wrapperStyle={{ pointerEvents: "none" }}
+                        />
+                        <Area
+                          type="linear"
+                          dataKey="avgMem"
+                          stroke="#7c3aed"
+                          fill="#ede9fe"
+                          name="메모리 %"
+                        />
                       </AreaChart>
                     </ResponsiveContainer>
                   )}
@@ -453,25 +613,48 @@ export default function MonitoringPage() {
           <div className="admin-card p-3">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-sm font-semibold">사이트 클릭 타임라인 (일)</p>
-              <span className="text-xs text-[color:var(--admin-text-muted)]">누적 {siteClickTotal.toLocaleString()}회</span>
+              <span className="text-xs text-[color:var(--admin-text-muted)]">
+                누적 {siteClickTotal.toLocaleString()}회
+              </span>
             </div>
             <div className="h-40">
               {loading ? (
-                <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">불러오는 중...</div>
+                <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">
+                  불러오는 중...
+                </div>
               ) : data.siteClickSeries.length === 0 ? (
-                <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">데이터 없음</div>
+                <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">
+                  데이터 없음
+                </div>
               ) : (
-                <ResponsiveContainer width="100%" height="100%" minWidth={220} minHeight={120}>
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                  minWidth={220}
+                  minHeight={120}
+                >
                   <AreaChart
                     data={data.siteClickSeries}
                     onMouseEnter={() => setActiveChart("site-click")}
                     onMouseLeave={() => setActiveChart(null)}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="minute" tick={{ fontSize: 10, fill: "#6b7280" }} />
+                    <XAxis
+                      dataKey="minute"
+                      tick={{ fontSize: 10, fill: "#6b7280" }}
+                    />
                     <YAxis tick={{ fontSize: 10, fill: "#6b7280" }} />
-                    <Tooltip active={activeChart === "site-click"} wrapperStyle={{ pointerEvents: "none" }} />
-                    <Area type="linear" dataKey="count" stroke="#2563eb" fill="#bfdbfe" name="사이트 클릭" />
+                    <Tooltip
+                      active={activeChart === "site-click"}
+                      wrapperStyle={{ pointerEvents: "none" }}
+                    />
+                    <Area
+                      type="linear"
+                      dataKey="count"
+                      stroke="#2563eb"
+                      fill="#bfdbfe"
+                      name="사이트 클릭"
+                    />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
@@ -481,25 +664,48 @@ export default function MonitoringPage() {
           <div className="admin-card p-3">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-sm font-semibold">유튜브 클릭 타임라인 (일)</p>
-              <span className="text-xs text-[color:var(--admin-text-muted)]">누적 {(data.youtubeClickTotal ?? 0).toLocaleString()}회</span>
+              <span className="text-xs text-[color:var(--admin-text-muted)]">
+                누적 {(data.youtubeClickTotal ?? 0).toLocaleString()}회
+              </span>
             </div>
             <div className="h-40">
               {loading ? (
-                <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">불러오는 중...</div>
+                <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">
+                  불러오는 중...
+                </div>
               ) : data.youtubeClickSeries.length === 0 ? (
-                <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">데이터 없음</div>
+                <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">
+                  데이터 없음
+                </div>
               ) : (
-                <ResponsiveContainer width="100%" height="100%" minWidth={220} minHeight={120}>
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                  minWidth={220}
+                  minHeight={120}
+                >
                   <AreaChart
                     data={data.youtubeClickSeries}
                     onMouseEnter={() => setActiveChart("youtube-click")}
                     onMouseLeave={() => setActiveChart(null)}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="minute" tick={{ fontSize: 10, fill: "#6b7280" }} />
+                    <XAxis
+                      dataKey="minute"
+                      tick={{ fontSize: 10, fill: "#6b7280" }}
+                    />
                     <YAxis tick={{ fontSize: 10, fill: "#6b7280" }} />
-                    <Tooltip active={activeChart === "youtube-click"} wrapperStyle={{ pointerEvents: "none" }} />
-                    <Area type="linear" dataKey="count" stroke="#ef4444" fill="#fecaca" name="유튜브 클릭" />
+                    <Tooltip
+                      active={activeChart === "youtube-click"}
+                      wrapperStyle={{ pointerEvents: "none" }}
+                    />
+                    <Area
+                      type="linear"
+                      dataKey="count"
+                      stroke="#ef4444"
+                      fill="#fecaca"
+                      name="유튜브 클릭"
+                    />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
@@ -510,11 +716,18 @@ export default function MonitoringPage() {
             <div className="mb-2 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-semibold">페이지 방문 추이 (일)</p>
-                <span className="text-xs text-[color:var(--admin-text-muted)]">누적 {data.summary.pageVisits.toLocaleString()}회</span>
+                <span className="text-xs text-[color:var(--admin-text-muted)]">
+                  누적 {data.summary.pageVisits.toLocaleString()}회
+                </span>
               </div>
               <div className="flex gap-1">
                 {([7, 30] as const).map((d) => (
-                  <button key={d} type="button" onClick={() => setPageVisitDays(d)} className={`admin-btn admin-btn-sm ${pageVisitDays === d ? "admin-btn-primary" : "admin-btn-secondary"}`}>
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setPageVisitDays(d)}
+                    className={`admin-btn admin-btn-sm ${pageVisitDays === d ? "admin-btn-primary" : "admin-btn-secondary"}`}
+                  >
                     {d}일
                   </button>
                 ))}
@@ -522,21 +735,42 @@ export default function MonitoringPage() {
             </div>
             <div className="h-20">
               {loading ? (
-                <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">불러오는 중...</div>
+                <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">
+                  불러오는 중...
+                </div>
               ) : (data.pageVisitSeries ?? []).length === 0 ? (
-                <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">데이터 없음</div>
+                <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">
+                  데이터 없음
+                </div>
               ) : (
-                <ResponsiveContainer width="100%" height="100%" minWidth={220} minHeight={120}>
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                  minWidth={220}
+                  minHeight={120}
+                >
                   <AreaChart
                     data={data.pageVisitSeries}
                     onMouseEnter={() => setActiveChart("page-visit")}
                     onMouseLeave={() => setActiveChart(null)}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#6b7280" }} />
+                    <XAxis
+                      dataKey="day"
+                      tick={{ fontSize: 10, fill: "#6b7280" }}
+                    />
                     <YAxis tick={{ fontSize: 10, fill: "#6b7280" }} />
-                    <Tooltip active={activeChart === "page-visit"} wrapperStyle={{ pointerEvents: "none" }} />
-                    <Area type="linear" dataKey="count" stroke="#7c3aed" fill="#ede9fe" name="페이지 방문" />
+                    <Tooltip
+                      active={activeChart === "page-visit"}
+                      wrapperStyle={{ pointerEvents: "none" }}
+                    />
+                    <Area
+                      type="linear"
+                      dataKey="count"
+                      stroke="#7c3aed"
+                      fill="#ede9fe"
+                      name="페이지 방문"
+                    />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
@@ -545,45 +779,90 @@ export default function MonitoringPage() {
 
           <div className="admin-card p-3">
             <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-semibold">기능별 응답 추이 (10분 자동점검)</p>
+              <p className="text-sm font-semibold">
+                기능별 응답 추이 (10분 자동점검)
+              </p>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-[color:var(--admin-text-muted)]">최근 10일</span>
+                <span className="text-xs text-[color:var(--admin-text-muted)]">
+                  최근 10일
+                </span>
                 <div className="flex gap-1">
-                  {(["sites", "stat-builds", "youtube"] as const).map((name) => (
-                    <button key={name} type="button" onClick={() => setSectionTab(name)}
-                      className={`admin-btn admin-btn-sm ${sectionTab === name ? "admin-btn-primary" : "admin-btn-secondary"}`}>
-                      {name}
-                    </button>
-                  ))}
+                  {(["sites", "stat-builds", "youtube"] as const).map(
+                    (name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => setSectionTab(name)}
+                        className={`admin-btn admin-btn-sm ${sectionTab === name ? "admin-btn-primary" : "admin-btn-secondary"}`}
+                      >
+                        {name}
+                      </button>
+                    ),
+                  )}
                 </div>
               </div>
             </div>
             {(() => {
-              const series = data.sectionSeries.filter((item) => item.label === sectionTab);
-              const latest = series.length > 0 ? series[series.length - 1] : null;
-              const totalCount = series.reduce((sum, item) => sum + item.count, 0);
+              const series = data.sectionSeries.filter(
+                (item) => item.label === sectionTab,
+              );
+              const latest =
+                series.length > 0 ? series[series.length - 1] : null;
+              const totalCount = series.reduce(
+                (sum, item) => sum + item.count,
+                0,
+              );
               return (
                 <>
                   <div className="mb-1 flex justify-end">
                     <span className="text-[11px] text-[color:var(--admin-text-muted)]">
-                      {latest ? `${latest.avgDurationMs}ms · ${totalCount}회` : "데이터 없음"}
+                      {latest
+                        ? `${latest.avgDurationMs}ms · ${totalCount}회`
+                        : "데이터 없음"}
                     </span>
                   </div>
                   <div className="h-28">
                     {series.length === 0 ? (
-                      <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">데이터 없음</div>
+                      <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">
+                        데이터 없음
+                      </div>
                     ) : (
-                      <ResponsiveContainer width="100%" height="100%" minWidth={120} minHeight={80}>
+                      <ResponsiveContainer
+                        width="100%"
+                        height="100%"
+                        minWidth={120}
+                        minHeight={80}
+                      >
                         <AreaChart
                           data={series}
-                          onMouseEnter={() => setActiveChart(`section-${sectionTab}`)}
+                          onMouseEnter={() =>
+                            setActiveChart(`section-${sectionTab}`)
+                          }
                           onMouseLeave={() => setActiveChart(null)}
                         >
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                          <XAxis dataKey="minute" tick={{ fontSize: 10, fill: "#6b7280" }} />
-                          <YAxis tick={{ fontSize: 10, fill: "#6b7280" }} unit="ms" />
-                          <Tooltip active={activeChart === `section-${sectionTab}`} wrapperStyle={{ pointerEvents: "none" }} />
-                          <Area type="linear" dataKey="avgDurationMs" stroke="#2563eb" fill="#dbeafe" name="평균 응답" />
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke="#e5e7eb"
+                          />
+                          <XAxis
+                            dataKey="minute"
+                            tick={{ fontSize: 10, fill: "#6b7280" }}
+                          />
+                          <YAxis
+                            tick={{ fontSize: 10, fill: "#6b7280" }}
+                            unit="ms"
+                          />
+                          <Tooltip
+                            active={activeChart === `section-${sectionTab}`}
+                            wrapperStyle={{ pointerEvents: "none" }}
+                          />
+                          <Area
+                            type="linear"
+                            dataKey="avgDurationMs"
+                            stroke="#2563eb"
+                            fill="#dbeafe"
+                            name="평균 응답"
+                          />
                         </AreaChart>
                       </ResponsiveContainer>
                     )}
@@ -598,15 +877,24 @@ export default function MonitoringPage() {
           <div className="admin-card p-3">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-sm font-semibold">사이트 클릭 상위</p>
-              <span className="text-xs text-[color:var(--admin-text-muted)]">누적</span>
+              <span className="text-xs text-[color:var(--admin-text-muted)]">
+                누적
+              </span>
             </div>
             <div className="space-y-1">
               {siteClickShareItems.length === 0 ? (
-                <div className="text-sm text-[color:var(--admin-text-muted)]">데이터 없음</div>
+                <div className="text-sm text-[color:var(--admin-text-muted)]">
+                  데이터 없음
+                </div>
               ) : (
                 siteClickShareItems.map((item) => (
-                  <div key={`${item.siteHref}-${item.siteCategory}`} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-1.5">
-                    <p className="truncate text-sm font-medium">{item.siteName}</p>
+                  <div
+                    key={`${item.siteName}-${item.siteHref}-${item.siteCategory}`}
+                    className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-1.5"
+                  >
+                    <p className="truncate text-sm font-medium">
+                      {item.siteName}
+                    </p>
                     <p className="text-sm font-semibold">{item.pct}%</p>
                   </div>
                 ))
@@ -617,31 +905,54 @@ export default function MonitoringPage() {
           <div className="admin-card p-3">
             <div className="mb-2 flex items-center justify-between">
               <div className="flex items-center gap-1 rounded-md bg-slate-100 p-0.5">
-                <button type="button" onClick={() => setDeviceTab("device")} className={`rounded px-2 py-1 text-xs ${deviceTab === "device" ? "bg-white font-semibold text-[color:var(--admin-text)]" : "text-[color:var(--admin-text-muted)]"}`}>
+                <button
+                  type="button"
+                  onClick={() => setDeviceTab("device")}
+                  className={`rounded px-2 py-1 text-xs ${deviceTab === "device" ? "bg-white font-semibold text-[color:var(--admin-text)]" : "text-[color:var(--admin-text-muted)]"}`}
+                >
                   Devices
                 </button>
-                <button type="button" onClick={() => setDeviceTab("browser")} className={`rounded px-2 py-1 text-xs ${deviceTab === "browser" ? "bg-white font-semibold text-[color:var(--admin-text)]" : "text-[color:var(--admin-text-muted)]"}`}>
+                <button
+                  type="button"
+                  onClick={() => setDeviceTab("browser")}
+                  className={`rounded px-2 py-1 text-xs ${deviceTab === "browser" ? "bg-white font-semibold text-[color:var(--admin-text)]" : "text-[color:var(--admin-text-muted)]"}`}
+                >
                   Browsers
                 </button>
               </div>
               {liveVisitDelta > 0 ? (
-                <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700">+{liveVisitDelta}</span>
+                <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700">
+                  +{liveVisitDelta}
+                </span>
               ) : null}
             </div>
             <div className="space-y-1">
-              {(deviceTab === "device" ? deviceItems : browserItems).length === 0 ? (
-                <div className="grid h-24 place-items-center text-xs text-[color:var(--admin-text-muted)]">데이터 없음</div>
+              {(deviceTab === "device" ? deviceItems : browserItems).length ===
+              0 ? (
+                <div className="grid h-24 place-items-center text-xs text-[color:var(--admin-text-muted)]">
+                  데이터 없음
+                </div>
               ) : deviceTab === "device" ? (
                 deviceItems.map((item) => (
-                  <div key={item.label} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-1.5">
-                    <p className="text-sm font-medium">{normalizeLabel(item.label)}</p>
+                  <div
+                    key={item.label}
+                    className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-1.5"
+                  >
+                    <p className="text-sm font-medium">
+                      {normalizeLabel(item.label)}
+                    </p>
                     <p className="text-sm font-semibold">{item.pct}%</p>
                   </div>
                 ))
               ) : (
                 browserItems.map((item) => (
-                  <div key={item.browserName} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-1.5">
-                    <p className="text-sm font-medium">{normalizeLabel(item.browserName)}</p>
+                  <div
+                    key={item.browserName}
+                    className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-1.5"
+                  >
+                    <p className="text-sm font-medium">
+                      {normalizeLabel(item.browserName)}
+                    </p>
                     <p className="text-sm font-semibold">{item.pct}%</p>
                   </div>
                 ))
@@ -652,15 +963,24 @@ export default function MonitoringPage() {
           <div className="admin-card p-3">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-sm font-semibold">국가 분포</p>
-              <span className="text-xs text-[color:var(--admin-text-muted)]">방문</span>
+              <span className="text-xs text-[color:var(--admin-text-muted)]">
+                방문
+              </span>
             </div>
             <div className="space-y-1">
               {countryShareItems.length === 0 ? (
-                <div className="text-sm text-[color:var(--admin-text-muted)]">데이터 없음</div>
+                <div className="text-sm text-[color:var(--admin-text-muted)]">
+                  데이터 없음
+                </div>
               ) : (
                 countryShareItems.map((item) => (
-                  <div key={item.countryCode} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-1.5">
-                    <p className="text-sm font-medium">{normalizeLabel(item.countryCode)}</p>
+                  <div
+                    key={item.countryCode}
+                    className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-1.5"
+                  >
+                    <p className="text-sm font-medium">
+                      {normalizeLabel(item.countryCode)}
+                    </p>
                     <p className="text-sm font-semibold">{item.pct}%</p>
                   </div>
                 ))
@@ -671,15 +991,24 @@ export default function MonitoringPage() {
           <div className="admin-card p-3">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-sm font-semibold">운영체제 분포</p>
-              <span className="text-xs text-[color:var(--admin-text-muted)]">방문</span>
+              <span className="text-xs text-[color:var(--admin-text-muted)]">
+                방문
+              </span>
             </div>
             <div className="space-y-1">
               {osShareItems.length === 0 ? (
-                <div className="text-sm text-[color:var(--admin-text-muted)]">데이터 없음</div>
+                <div className="text-sm text-[color:var(--admin-text-muted)]">
+                  데이터 없음
+                </div>
               ) : (
                 osShareItems.map((item) => (
-                  <div key={item.osName} className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-1.5">
-                    <p className="text-sm font-medium">{normalizeLabel(item.osName)}</p>
+                  <div
+                    key={item.osName}
+                    className="flex items-center justify-between rounded-md bg-slate-50 px-3 py-1.5"
+                  >
+                    <p className="text-sm font-medium">
+                      {normalizeLabel(item.osName)}
+                    </p>
                     <p className="text-sm font-semibold">{item.pct}%</p>
                   </div>
                 ))
@@ -688,7 +1017,6 @@ export default function MonitoringPage() {
           </div>
         </div>
       </div>
-
     </div>
   );
 }

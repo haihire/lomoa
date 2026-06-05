@@ -21,10 +21,7 @@ function createService(localDisable = 'true') {
     }),
   } as unknown as ConfigService;
 
-  const service = new ClassSummaryService(
-    repo as never,
-    config,
-  );
+  const service = new ClassSummaryService(repo as never, config);
   return { service, repo };
 }
 

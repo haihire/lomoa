@@ -1,6 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { buildGuestNotice, useAdminRole } from "@/lib/admin-role";
 
 interface Site {
@@ -11,6 +20,7 @@ interface Site {
   description: string | null;
   icon: string | null;
   is_active: number;
+  click_count: number;
 }
 
 const EMPTY_FORM = {
@@ -107,6 +117,51 @@ export default function AdminSitesPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
+
+  // 선택된 사이트의 7일 클릭 추이 (우측 그래프)
+  const [selectedSite, setSelectedSite] = useState<Site | null>(null);
+  const [clickSeries, setClickSeries] = useState<
+    { bucket: string; count: number }[]
+  >([]);
+  const [clickYMax, setClickYMax] = useState(0);
+  const [seriesLoading, setSeriesLoading] = useState(false);
+
+  const selectSite = useCallback((site: Site) => {
+    setSelectedSite(site);
+  }, []);
+
+  // 선택된 사이트의 7일 클릭 추이를 가져온다.
+  // cleanup으로 이전 요청을 무시해 빠른 연속 클릭 시 경쟁 상태(stale 응답) 방지.
+  useEffect(() => {
+    if (!selectedSite) return;
+    let cancelled = false;
+    const seq = selectedSite.seq;
+    setSeriesLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/sites/${seq}/click-series?days=7`, {
+          cache: "no-store",
+        });
+        const data = (await res.json()) as {
+          series: { bucket: string; count: number }[];
+          yMax?: number;
+        };
+        if (cancelled) return;
+        setClickSeries(data.series ?? []);
+        setClickYMax(data.yMax ?? 0);
+      } catch {
+        if (!cancelled) {
+          setClickSeries([]);
+          setClickYMax(0);
+        }
+      } finally {
+        if (!cancelled) setSeriesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSite]);
 
   function requireMaster(action: string) {
     if (!isGuest) return true;
@@ -396,9 +451,10 @@ export default function AdminSitesPage() {
   }
 
   const isProcessing = busyMessage !== null;
-  const totalSites = sites.length;
-  const activeSites = sites.filter((site) => site.is_active === 1).length;
-  const inactiveSites = totalSites - activeSites;
+  // 표시용: 클릭수 내림차순 (동점이면 기존 순서 유지)
+  const sortedSites = [...sites].sort(
+    (a, b) => (b.click_count ?? 0) - (a.click_count ?? 0),
+  );
 
   return (
     <div>
@@ -445,24 +501,6 @@ export default function AdminSitesPage() {
           >
             + 사이트 추가
           </button>
-        </div>
-      </div>
-
-      {/* 통계 카드 */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="admin-stat-card">
-          <p className="admin-stat-label">전체 사이트</p>
-          <p className="admin-stat-value mt-1">{totalSites}</p>
-        </div>
-        <div className="admin-stat-card">
-          <p className="admin-stat-label">활성</p>
-          <p className="admin-stat-value mt-1 text-emerald-600">
-            {activeSites}
-          </p>
-        </div>
-        <div className="admin-stat-card">
-          <p className="admin-stat-label">비활성</p>
-          <p className="admin-stat-value mt-1 text-gray-400">{inactiveSites}</p>
         </div>
       </div>
 
@@ -556,41 +594,61 @@ export default function AdminSitesPage() {
           </p>
         </div>
       ) : (
-        <div className="admin-card overflow-hidden">
+        <div className="flex gap-4 items-start">
+        <div className="admin-card overflow-hidden flex-1 min-w-0">
           <div className="overflow-x-auto">
-            <table className="admin-table">
+            <table className="admin-table table-fixed w-full min-w-[860px]">
+              <colgroup>
+                <col style={{ width: "15%" }} />
+                <col style={{ width: "21%" }} />
+                <col style={{ width: "23%" }} />
+                <col style={{ width: "13%" }} />
+                <col style={{ width: "7%" }} />
+                <col style={{ width: "14%" }} />
+                <col style={{ width: "7%" }} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th className="w-12 text-center">#</th>
-                  <th>이름</th>
-                  <th>URL</th>
-                  <th>설명</th>
-                  <th>카테고리</th>
+                  <th className="text-center">이름</th>
+                  <th className="text-center">URL</th>
+                  <th className="text-center">설명</th>
+                  <th className="text-center">카테고리</th>
                   <th className="text-center">활성</th>
                   <th className="text-center">액션</th>
+                  <th className="text-center">인기도</th>
                 </tr>
               </thead>
               <tbody>
-                {sites.map((site, idx) => (
-                  <tr key={site.seq}>
-                    <td className="text-center text-[color:var(--admin-text-subtle)] tabular-nums">
-                      {idx + 1}
-                    </td>
-                    <td className="font-medium">{site.name}</td>
-                    <td>
+                {sortedSites.map((site) => (
+                  <tr
+                    key={site.seq}
+                    onClick={() => selectSite(site)}
+                    className={`cursor-pointer ${
+                      selectedSite?.seq === site.seq
+                        ? "bg-blue-50/70"
+                        : ""
+                    }`}
+                  >
+                    <td className="text-center font-medium truncate">{site.name}</td>
+                    <td className="text-center">
                       <a
                         href={site.href}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block max-w-xs truncate text-blue-600 hover:text-blue-700 hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                        className="block truncate text-center text-blue-600 hover:text-blue-700 hover:underline"
+                        title={site.href}
                       >
                         {site.href}
                       </a>
                     </td>
-                    <td className="text-[color:var(--admin-text-muted)] max-w-xs truncate">
+                    <td
+                      className="text-center text-[color:var(--admin-text-muted)] truncate"
+                      title={site.description ?? ""}
+                    >
                       {site.description ?? "-"}
                     </td>
-                    <td>
+                    <td className="text-center">
                       {site.category ? (
                         <span
                           className={`admin-badge ${getCategoryTone(site.category)}`}
@@ -605,7 +663,10 @@ export default function AdminSitesPage() {
                     </td>
                     <td className="text-center">
                       <button
-                        onClick={() => handleToggleActive(site)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleActive(site);
+                        }}
                         disabled={isProcessing}
                         className={`admin-badge ${
                           site.is_active
@@ -616,29 +677,106 @@ export default function AdminSitesPage() {
                         {site.is_active ? "활성" : "비활성"}
                       </button>
                     </td>
-                    <td>
-                      <div className="flex justify-center gap-2">
+                    <td className="text-center" style={{ paddingLeft: 6, paddingRight: 6 }}>
+                      <div className="flex justify-center gap-1 flex-nowrap">
                         <button
-                          onClick={() => startEdit(site)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startEdit(site);
+                          }}
                           disabled={isProcessing}
-                          className="admin-btn admin-btn-sm admin-btn-secondary"
+                          className="admin-btn admin-btn-sm admin-btn-secondary whitespace-nowrap"
                         >
                           수정
                         </button>
                         <button
-                          onClick={() => handleDelete(site.seq)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(site.seq);
+                          }}
                           disabled={isProcessing}
-                          className="admin-btn admin-btn-sm admin-btn-danger"
+                          className="admin-btn admin-btn-sm admin-btn-danger whitespace-nowrap"
                         >
                           삭제
                         </button>
                       </div>
+                    </td>
+                    <td className="text-center tabular-nums font-semibold text-blue-600">
+                      {site.click_count.toLocaleString()}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* 우측: 선택 사이트 7일 클릭 추이 */}
+        <div className="admin-card w-80 shrink-0 p-4 hidden lg:block">
+          {!selectedSite ? (
+            <p className="text-sm text-[color:var(--admin-text-muted)] text-center py-10">
+              사이트를 클릭하면
+              <br />
+              최근 7일 클릭 추이를 볼 수 있어요.
+            </p>
+          ) : (
+            <div>
+              {/* 이름(왼쪽) + 총 클릭수(오른쪽 끝) */}
+              <div className="flex items-baseline justify-between gap-2 mb-3">
+                <p className="text-sm font-semibold truncate">
+                  {selectedSite.name}
+                </p>
+                <span className="shrink-0">
+                  <span className="text-lg font-bold text-blue-600 tabular-nums">
+                    {selectedSite.click_count.toLocaleString()}
+                  </span>
+                  <span className="text-xs text-[color:var(--admin-text-muted)] ml-1">
+                    클릭
+                  </span>
+                </span>
+              </div>
+              {seriesLoading ? (
+                <p className="text-xs text-[color:var(--admin-text-muted)] py-10 text-center">
+                  불러오는 중...
+                </p>
+              ) : (
+                <div style={{ width: "100%", height: 180 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={clickSeries}>
+                      <defs>
+                        <linearGradient id="siteClickFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.3} />
+                          <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis
+                        dataKey="bucket"
+                        interval={0}
+                        tick={{ fontSize: 9, fill: "#6b7280" }}
+                      />
+                      <YAxis
+                        allowDecimals={false}
+                        width={28}
+                        domain={[0, Math.max(clickYMax, 1)]}
+                        tick={{ fontSize: 10, fill: "#6b7280" }}
+                      />
+                      <Tooltip />
+                      <Area
+                        type="monotone"
+                        dataKey="count"
+                        stroke="#3b82f6"
+                        strokeWidth={2}
+                        fill="url(#siteClickFill)"
+                        dot={{ r: 3, fill: "#3b82f6" }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         </div>
       )}
 

@@ -415,9 +415,13 @@ body {
   color: var(--admin-text-muted);
   font-size: 0.8125rem;
   font-weight: 500;
-  text-align: left;
+  /* 정렬은 각 th의 유틸리티 클래스(text-left/text-center)로 지정 */
   padding: 0.875rem 1rem;
   border-bottom: 1px solid var(--admin-border);
+}
+/* 정렬 클래스를 명시하지 않은 헤더는 기본 왼쪽 정렬 */
+.admin-table thead th:not(.text-center):not(.text-right) {
+  text-align: left;
 }
 .admin-table tbody td {
   padding: 0.75rem 1rem;

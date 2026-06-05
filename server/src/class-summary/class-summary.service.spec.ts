@@ -16,6 +16,8 @@ function createService(localDisable = 'true') {
       const values: Record<string, string | undefined> = {
         GEMINI_API_KEY: 'dummy-key',
         LOCAL_DISABLE_QUOTA_APIS: localDisable,
+        // service는 isClassSummaryDisabled(DISABLE_CLASS_SUMMARY)로 판단
+        DISABLE_CLASS_SUMMARY: localDisable,
       };
       return values[key];
     }),

@@ -35,7 +35,8 @@ export class AdminSitesController {
     @Param('seq', ParseIntPipe) seq: number,
     @Query('days') days?: string,
   ) {
-    const n = Math.max(1, Math.min(30, days ? parseInt(days, 10) : 7));
+    const parsed = days ? parseInt(days, 10) : 7;
+    const n = Number.isNaN(parsed) ? 7 : Math.max(1, Math.min(30, parsed));
     const [series, yMax] = await Promise.all([
       this.sitesRepo.findClickSeries(seq, n),
       this.sitesRepo.findMaxDailyClicks(n),

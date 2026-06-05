@@ -158,14 +158,18 @@ export class SitesRepository {
   }
 
   async update(seq: number, input: SiteUpdateInput): Promise<void> {
-    if (input.name !== undefined) {
+    // 이름/URL 변경 시 클릭 로그(apm_site_clicks)도 동기화 — 기존 href로 매칭 후 갱신.
+    // href가 바뀌어도 과거 클릭 이력이 새 URL에 그대로 연결되도록 함.
+    if (input.name !== undefined || input.href !== undefined) {
       const current = await this.prisma.loa_sites.findUnique({
         where: { seq },
         select: { href: true },
       });
       if (current) {
         await this.prisma.$executeRaw`
-          UPDATE apm_site_clicks SET site_name = ${input.name}
+          UPDATE apm_site_clicks
+          SET site_name = COALESCE(${input.name ?? null}, site_name),
+              site_href = COALESCE(${input.href ?? null}, site_href)
           WHERE site_href = ${current.href}
         `;
       }

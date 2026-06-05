@@ -126,27 +126,42 @@ export default function AdminSitesPage() {
   const [clickYMax, setClickYMax] = useState(0);
   const [seriesLoading, setSeriesLoading] = useState(false);
 
-  const selectSite = useCallback(async (site: Site) => {
+  const selectSite = useCallback((site: Site) => {
     setSelectedSite(site);
-    setSeriesLoading(true);
-    try {
-      const res = await fetch(
-        `/api/admin/sites/${site.seq}/click-series?days=7`,
-        { cache: "no-store" },
-      );
-      const data = (await res.json()) as {
-        series: { bucket: string; count: number }[];
-        yMax?: number;
-      };
-      setClickSeries(data.series ?? []);
-      setClickYMax(data.yMax ?? 0);
-    } catch {
-      setClickSeries([]);
-      setClickYMax(0);
-    } finally {
-      setSeriesLoading(false);
-    }
   }, []);
+
+  // 선택된 사이트의 7일 클릭 추이를 가져온다.
+  // cleanup으로 이전 요청을 무시해 빠른 연속 클릭 시 경쟁 상태(stale 응답) 방지.
+  useEffect(() => {
+    if (!selectedSite) return;
+    let cancelled = false;
+    const seq = selectedSite.seq;
+    setSeriesLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/sites/${seq}/click-series?days=7`, {
+          cache: "no-store",
+        });
+        const data = (await res.json()) as {
+          series: { bucket: string; count: number }[];
+          yMax?: number;
+        };
+        if (cancelled) return;
+        setClickSeries(data.series ?? []);
+        setClickYMax(data.yMax ?? 0);
+      } catch {
+        if (!cancelled) {
+          setClickSeries([]);
+          setClickYMax(0);
+        }
+      } finally {
+        if (!cancelled) setSeriesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSite]);
 
   function requireMaster(action: string) {
     if (!isGuest) return true;

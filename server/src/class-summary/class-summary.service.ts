@@ -142,7 +142,9 @@ export class ClassSummaryService implements OnModuleInit {
       return false;
     }
 
-    const currentHash = createHash('md5').update(titles.join('\n')).digest('hex');
+    const currentHash = createHash('md5')
+      .update(titles.join('\n'))
+      .digest('hex');
     const existing = await this.classSummaryRepo.findOne(className);
     if (existing && existing.titleHash === currentHash) {
       this.logger.debug(`[${className}] 변경 없음 — Gemini 스킵`);

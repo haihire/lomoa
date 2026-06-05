@@ -27,7 +27,11 @@ export class ClassSummaryRepository {
     return row !== null;
   }
 
-  async upsert(className: string, summary: string, titleHash: string): Promise<void> {
+  async upsert(
+    className: string,
+    summary: string,
+    titleHash: string,
+  ): Promise<void> {
     await this.prisma.loa_class_summaries.upsert({
       where: { class_name: className },
       create: {

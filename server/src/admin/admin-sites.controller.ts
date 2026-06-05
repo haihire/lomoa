@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { SitesRepository } from '../sites/sites.repository';
@@ -26,6 +27,21 @@ export class AdminSitesController {
   @Get()
   async findAll() {
     return this.sitesRepo.findAdminAll();
+  }
+
+  /** 특정 사이트의 최근 N일(기본 7) 일별 클릭 추이 */
+  @Get(':seq/click-series')
+  async clickSeries(
+    @Param('seq', ParseIntPipe) seq: number,
+    @Query('days') days?: string,
+  ) {
+    const parsed = days ? parseInt(days, 10) : 7;
+    const n = Number.isNaN(parsed) ? 7 : Math.max(1, Math.min(30, parsed));
+    const [series, yMax] = await Promise.all([
+      this.sitesRepo.findClickSeries(seq, n),
+      this.sitesRepo.findMaxDailyClicks(n),
+    ]);
+    return { series, yMax };
   }
 
   @Post()

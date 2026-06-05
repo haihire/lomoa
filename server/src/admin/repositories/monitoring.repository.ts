@@ -320,12 +320,13 @@ export class MonitoringRepository {
   }
 
   async findPageVisitSeriesDays(days: number) {
-    // generate_series로 전체 날짜 축을 만들고 LEFT JOIN → 데이터 없는 날도 0으로 표시
+    // apm_page_visits는 (path,device,...)별 누적 카운터(visits)라 행 수가 아닌 visits 합을 세야
+    // 실제 방문 횟수가 됨. generate_series로 데이터 없는 날도 0으로 표시.
     return this.prisma.$queryRaw<
       Array<{ bucket: string; count: bigint | number }>
     >`
       SELECT TO_CHAR(d.day, 'MM-DD') AS bucket,
-             COUNT(p.id) AS count
+             COALESCE(SUM(p.visits), 0) AS count
       FROM generate_series(
              (CURRENT_DATE - ((${days}::int - 1) * INTERVAL '1 day'))::date,
              CURRENT_DATE,
@@ -448,9 +449,9 @@ export class MonitoringRepository {
 
   async findSiteClicks() {
     return this.prisma.$queryRaw<SiteClickRow[]>`
-      SELECT site_name, site_href, site_category, COUNT(*) AS click_count
+      SELECT MAX(site_name) AS site_name, site_href, site_category, COUNT(*) AS click_count
       FROM apm_site_clicks
-      GROUP BY site_name, site_href, site_category
+      GROUP BY site_href, site_category
       ORDER BY click_count DESC
       LIMIT 20
     `;

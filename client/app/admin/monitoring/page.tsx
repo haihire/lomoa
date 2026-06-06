@@ -5,11 +5,30 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+
+interface PageLoadPoint {
+  bucket: string;
+  ttfb: number | null;
+  dcl: number | null;
+  lcp: number | null;
+  load: number | null;
+  count: number;
+}
+
+const PAGE_LOAD_METRICS = [
+  { key: "load", label: "전체 로딩", color: "#2563eb" },
+  { key: "lcp", label: "LCP", color: "#16a34a" },
+  { key: "dcl", label: "DCL", color: "#7c3aed" },
+  { key: "ttfb", label: "TTFB", color: "#f59e0b" },
+] as const;
 
 type Dashboard = {
   summary: {
@@ -105,6 +124,12 @@ export default function MonitoringPage() {
   const [sectionTab, setSectionTab] = useState<
     "sites" | "stat-builds" | "youtube"
   >("sites");
+  const [pageLoadSource, setPageLoadSource] = useState<"rum" | "synthetic">(
+    "rum",
+  );
+  const [pageLoadDays, setPageLoadDays] = useState<1 | 7 | 30>(7);
+  const [pageLoadSeries, setPageLoadSeries] = useState<PageLoadPoint[]>([]);
+  const [pageLoadLoading, setPageLoadLoading] = useState(true);
   const hasLoadedRef = useRef(false);
   const prevVisitCountRef = useRef(0);
 
@@ -183,6 +208,37 @@ export default function MonitoringPage() {
       alive = false;
     };
   }, [pageVisitDays]);
+
+  useEffect(() => {
+    let alive = true;
+    setPageLoadLoading(true);
+    async function loadPageLoad() {
+      try {
+        const res = await fetch(
+          `/api/admin/monitoring/page-load-series?source=${pageLoadSource}&days=${pageLoadDays}`,
+          { cache: "no-store" },
+        );
+        if (!alive || !res.ok) return;
+        const series = (await res.json()) as PageLoadPoint[];
+        setPageLoadSeries(Array.isArray(series) ? series : []);
+      } catch {
+        // keep previous
+      } finally {
+        if (alive) setPageLoadLoading(false);
+      }
+    }
+    void loadPageLoad();
+    return () => {
+      alive = false;
+    };
+  }, [pageLoadSource, pageLoadDays]);
+
+  const pageLoadLatest = useMemo(() => {
+    for (let i = pageLoadSeries.length - 1; i >= 0; i -= 1) {
+      if ((pageLoadSeries[i].count ?? 0) > 0) return pageLoadSeries[i];
+    }
+    return null;
+  }, [pageLoadSeries]);
 
   const siteClickTotal = useMemo(
     () => data.siteClicks.reduce((sum, item) => sum + item.clickCount, 0),
@@ -304,6 +360,106 @@ export default function MonitoringPage() {
       )}
 
       <div className="grid grid-cols-1 gap-4">
+        <div className="admin-card p-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold">메인페이지 로딩 속도 추이</p>
+              {pageLoadLatest && (
+                <span className="text-xs text-[color:var(--admin-text-muted)]">
+                  최근 전체로딩{" "}
+                  <span className="font-semibold text-[color:var(--admin-text)]">
+                    {pageLoadLatest.load ?? "-"}ms
+                  </span>
+                  {pageLoadLatest.lcp != null && ` · LCP ${pageLoadLatest.lcp}ms`}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 rounded-md bg-slate-100 p-0.5">
+                {(
+                  [
+                    { key: "rum", label: "실사용자" },
+                    { key: "synthetic", label: "합성" },
+                  ] as const
+                ).map((s) => (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => setPageLoadSource(s.key)}
+                    className={`rounded px-2 py-1 text-xs ${pageLoadSource === s.key ? "bg-white font-semibold text-[color:var(--admin-text)]" : "text-[color:var(--admin-text-muted)]"}`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-1">
+                {([1, 7, 30] as const).map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setPageLoadDays(d)}
+                    className={`admin-btn admin-btn-sm ${pageLoadDays === d ? "admin-btn-primary" : "admin-btn-secondary"}`}
+                  >
+                    {d}일
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          {pageLoadSource === "synthetic" && (
+            <p className="mb-2 text-[11px] text-[color:var(--admin-text-subtle)]">
+              합성은 서버가 10분마다 메인 HTML 문서를 받아 측정 (TTFB·문서완료만,
+              JS/자원/렌더 제외)
+            </p>
+          )}
+          <div className="h-48">
+            {pageLoadLoading ? (
+              <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">
+                불러오는 중...
+              </div>
+            ) : pageLoadSeries.every((p) => (p.count ?? 0) === 0) ? (
+              <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">
+                데이터 없음 (수집 시작 후 표시됩니다)
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart
+                  data={pageLoadSeries}
+                  onMouseEnter={() => setActiveChart("page-load")}
+                  onMouseLeave={() => setActiveChart(null)}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis
+                    dataKey="bucket"
+                    tick={{ fontSize: 9, fill: "#6b7280" }}
+                  />
+                  <YAxis tick={{ fontSize: 10, fill: "#6b7280" }} unit="ms" />
+                  <Tooltip
+                    active={activeChart === "page-load"}
+                    formatter={(v, name) => [v == null ? "-" : `${v}ms`, name]}
+                    wrapperStyle={{ pointerEvents: "none" }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  {PAGE_LOAD_METRICS.filter(
+                    (m) => pageLoadSource === "rum" || m.key === "ttfb" || m.key === "load",
+                  ).map((m) => (
+                    <Line
+                      key={m.key}
+                      type="monotone"
+                      dataKey={m.key}
+                      name={m.label}
+                      stroke={m.color}
+                      dot={false}
+                      strokeWidth={2}
+                      connectNulls
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
         <div className="grid auto-rows-min content-start grid-cols-1 gap-4 xl:grid-cols-2">
           <div className="admin-card p-3">
             <div className="mb-2 flex items-center justify-between">

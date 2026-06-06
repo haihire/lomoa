@@ -95,9 +95,10 @@ export class MonitoringRepository {
         os_name VARCHAR(64) NOT NULL DEFAULT 'Unknown',
         browser_name VARCHAR(64) NOT NULL DEFAULT 'Unknown',
         visits INT NOT NULL DEFAULT 1,
+        visit_day DATE NOT NULL DEFAULT CURRENT_DATE,
         last_seen_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT uk_page_device_country_os_browser UNIQUE (path, device_type, country_code, os_name, browser_name)
+        CONSTRAINT uk_page_device_country_os_browser_day UNIQUE (path, device_type, country_code, os_name, browser_name, visit_day)
       )
     `;
     await this.prisma.$executeRaw`
@@ -213,9 +214,11 @@ export class MonitoringRepository {
     osName: string;
     browserName: string;
   }) {
+    // visit_day(방문 날짜)를 충돌 키에 포함 → 같은 방문자라도 날짜별로 행이 나뉘어
+    // 일별 방문 추이가 정확해진다 (5/1·5/3 따로 집계).
     await this.prisma.$executeRaw`
       INSERT INTO apm_page_visits
-        (path, device_type, user_agent, referrer, country_code, os_name, browser_name, created_at)
+        (path, device_type, user_agent, referrer, country_code, os_name, browser_name, visit_day, created_at)
       VALUES (
         ${input.path},
         ${input.deviceType}::apm_page_visits_device_type,
@@ -224,16 +227,14 @@ export class MonitoringRepository {
         ${input.countryCode},
         ${input.osName},
         ${input.browserName},
+        CURRENT_DATE,
         NOW()
       )
-      ON CONFLICT (path, device_type, country_code, os_name, browser_name)
+      ON CONFLICT (path, device_type, country_code, os_name, browser_name, visit_day)
       DO UPDATE SET
         visits = apm_page_visits.visits + 1,
         user_agent = EXCLUDED.user_agent,
         referrer = EXCLUDED.referrer,
-        country_code = EXCLUDED.country_code,
-        os_name = EXCLUDED.os_name,
-        browser_name = EXCLUDED.browser_name,
         last_seen_at = NOW()
     `;
   }
@@ -320,8 +321,7 @@ export class MonitoringRepository {
   }
 
   async findPageVisitSeriesDays(days: number) {
-    // apm_page_visits는 (path,device,...)별 누적 카운터(visits)라 행 수가 아닌 visits 합을 세야
-    // 실제 방문 횟수가 됨. generate_series로 데이터 없는 날도 0으로 표시.
+    // visit_day(방문 날짜)별 visits 합 = 그날 실제 방문 횟수. generate_series로 빈 날도 0.
     return this.prisma.$queryRaw<
       Array<{ bucket: string; count: bigint | number }>
     >`
@@ -332,7 +332,7 @@ export class MonitoringRepository {
              CURRENT_DATE,
              INTERVAL '1 day'
            ) AS d(day)
-      LEFT JOIN apm_page_visits p ON DATE(p.last_seen_at) = d.day
+      LEFT JOIN apm_page_visits p ON p.visit_day = d.day
       GROUP BY d.day
       ORDER BY d.day ASC
     `;

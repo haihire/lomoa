@@ -4,7 +4,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 
@@ -54,7 +54,20 @@ export class SiteSuggestService {
 
     const model = this.genAI.getGenerativeModel({
       model: 'gemini-2.5-flash',
-      generationConfig: { responseMimeType: 'application/json' },
+      generationConfig: {
+        responseMimeType: 'application/json',
+        // 키·타입을 강제하고 category는 enum으로 제한 → 파싱 오류·잘못된 카테고리 차단
+        responseSchema: {
+          type: SchemaType.OBJECT,
+          properties: {
+            name: { type: SchemaType.STRING },
+            category: { type: SchemaType.STRING, enum: CATEGORIES, format: 'enum' },
+            description: { type: SchemaType.STRING },
+            icon: { type: SchemaType.STRING },
+          },
+          required: ['name', 'category', 'description', 'icon'],
+        },
+      },
     });
 
     const prompt = [
@@ -102,19 +115,30 @@ export class SiteSuggestService {
   private parse(raw: string): Partial<SiteSuggestion> {
     try {
       const cleaned = raw.replace(/```json\s*|\s*```/g, '').trim();
-      return JSON.parse(cleaned) as Partial<SiteSuggestion>;
+      const obj: unknown = JSON.parse(cleaned);
+      // null·배열·원시값 방어 — 순수 객체일 때만 사용
+      if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+        return obj as Partial<SiteSuggestion>;
+      }
+      return {};
     } catch {
       this.logger.warn(`Gemini JSON 파싱 실패: ${raw.slice(0, 120)}`);
       return {};
     }
   }
 
-  /** 사이트 메타(title/description/og:image) 추출. 실패해도 빈 값 반환(추천은 진행). */
+  /** 사이트 메타(title/description/og:image) 추출. 실패/위험 URL이면 빈 값 반환(추천은 진행). */
   private async fetchMeta(url: string): Promise<SiteMeta> {
+    // SSRF 방어: 크롤된 미검증 URL이므로 내부망/메타데이터 요청 차단
+    if (!this.isSafeUrl(url)) {
+      this.logger.warn(`안전하지 않은 URL — 메타 fetch 스킵: ${url}`);
+      return { title: '', description: '', ogImage: '' };
+    }
     try {
       const res = await axios.get<string>(url, {
         timeout: 8000,
         maxContentLength: 3 * 1024 * 1024,
+        maxRedirects: 2,
         headers: {
           'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
@@ -130,12 +154,51 @@ export class SiteSuggestService {
         $('meta[name="description"]').attr('content')?.trim() ||
         $('meta[property="og:description"]').attr('content')?.trim() ||
         '';
-      const ogImage =
+      let ogImage =
         $('meta[property="og:image"]').attr('content')?.trim() || '';
+      // 상대 경로(/logo.png 등)는 대상 사이트 기준 절대 URL로 변환
+      if (ogImage) {
+        try {
+          ogImage = new URL(ogImage, url).href;
+        } catch {
+          ogImage = '';
+        }
+      }
       return { title, description, ogImage };
     } catch {
       this.logger.debug(`사이트 메타 추출 실패 — 도메인만으로 추천: ${url}`);
       return { title: '', description: '', ogImage: '' };
     }
+  }
+
+  /** http(s) + 공인 호스트만 허용 (루프백·사설·링크로컬 IP 차단). */
+  private isSafeUrl(raw: string): boolean {
+    let u: URL;
+    try {
+      u = new URL(raw);
+    } catch {
+      return false;
+    }
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+
+    const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (host === 'localhost' || host.endsWith('.localhost')) return false;
+
+    // IPv4 리터럴 사설/예약 대역
+    const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (m) {
+      const a = Number(m[1]);
+      const b = Number(m[2]);
+      if (a === 0 || a === 10 || a === 127) return false;
+      if (a === 169 && b === 254) return false; // 링크로컬(AWS 메타데이터 169.254.169.254)
+      if (a === 172 && b >= 16 && b <= 31) return false;
+      if (a === 192 && b === 168) return false;
+      if (a === 100 && b >= 64 && b <= 127) return false; // CGNAT
+    }
+
+    // IPv6 루프백/ULA/링크로컬
+    if (host === '::1' || /^f[cde]/.test(host)) return false;
+
+    return true;
   }
 }

@@ -22,7 +22,18 @@ interface SiteCandidate {
 
 async function apiFetch(path: string, opts?: RequestInit) {
   const res = await fetch(`/api/admin/inven${path}`, opts);
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const text = await res.text();
+    // 백엔드 에러 본문이 JSON이면 message만 추출해 사용자에게 노출
+    let msg = text;
+    try {
+      const j = JSON.parse(text) as { message?: unknown };
+      if (typeof j?.message === "string") msg = j.message;
+    } catch {
+      // JSON 아니면 원문 그대로
+    }
+    throw new Error(msg);
+  }
   return res.json() as Promise<Record<string, unknown>>;
 }
 

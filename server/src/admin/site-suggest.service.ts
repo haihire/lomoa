@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import * as dns from 'dns/promises';
 
 export interface SiteSuggestion {
   name: string;
@@ -61,7 +62,7 @@ export class SiteSuggestService {
           type: SchemaType.OBJECT,
           properties: {
             name: { type: SchemaType.STRING },
-            category: { type: SchemaType.STRING, enum: CATEGORIES, format: 'enum' },
+            category: { type: SchemaType.STRING, enum: CATEGORIES },
             description: { type: SchemaType.STRING },
             icon: { type: SchemaType.STRING },
           },
@@ -104,9 +105,15 @@ export class SiteSuggestService {
       meta.ogImage ||
       `https://www.google.com/s2/favicons?domain=${input.domain}&sz=64`;
 
+    // enum을 강제하지만, 모델이 범위 밖 값을 내도 '기타'로 방어
+    const category =
+      parsed.category && CATEGORIES.includes(parsed.category.trim())
+        ? parsed.category.trim()
+        : '기타';
+
     return {
       name: parsed.name?.trim() || input.domain,
-      category: parsed.category?.trim() || '기타',
+      category,
       description: parsed.description?.trim() || '',
       icon,
     };
@@ -130,7 +137,7 @@ export class SiteSuggestService {
   /** 사이트 메타(title/description/og:image) 추출. 실패/위험 URL이면 빈 값 반환(추천은 진행). */
   private async fetchMeta(url: string): Promise<SiteMeta> {
     // SSRF 방어: 크롤된 미검증 URL이므로 내부망/메타데이터 요청 차단
-    if (!this.isSafeUrl(url)) {
+    if (!(await this.isSafeUrl(url))) {
       this.logger.warn(`안전하지 않은 URL — 메타 fetch 스킵: ${url}`);
       return { title: '', description: '', ogImage: '' };
     }
@@ -171,8 +178,11 @@ export class SiteSuggestService {
     }
   }
 
-  /** http(s) + 공인 호스트만 허용 (루프백·사설·링크로컬 IP 차단). */
-  private isSafeUrl(raw: string): boolean {
+  /**
+   * http(s) + 공인 호스트만 허용. 호스트네임을 DNS로 실제 IP까지 해석해
+   * 사설/루프백/링크로컬 대역이면 차단 (DNS rebinding 우회 방어).
+   */
+  private async isSafeUrl(raw: string): Promise<boolean> {
     let u: URL;
     try {
       u = new URL(raw);
@@ -184,21 +194,31 @@ export class SiteSuggestService {
     const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
     if (host === 'localhost' || host.endsWith('.localhost')) return false;
 
+    // 호스트네임의 실제 IP를 해석해 검증 (IP 리터럴/조회 실패 시 host 자체 검사)
+    let ips: string[];
+    try {
+      ips = (await dns.lookup(host, { all: true })).map((r) => r.address);
+    } catch {
+      ips = [host];
+    }
+    return ips.every((ip) => !this.isPrivateIp(ip));
+  }
+
+  /** 사설/루프백/링크로컬/예약 IP 여부. */
+  private isPrivateIp(ip: string): boolean {
     // IPv4 리터럴 사설/예약 대역
-    const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    const m = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
     if (m) {
       const a = Number(m[1]);
       const b = Number(m[2]);
-      if (a === 0 || a === 10 || a === 127) return false;
-      if (a === 169 && b === 254) return false; // 링크로컬(AWS 메타데이터 169.254.169.254)
-      if (a === 172 && b >= 16 && b <= 31) return false;
-      if (a === 192 && b === 168) return false;
-      if (a === 100 && b >= 64 && b <= 127) return false; // CGNAT
+      if (a === 0 || a === 10 || a === 127) return true;
+      if (a === 169 && b === 254) return true; // 링크로컬(AWS 메타데이터 169.254.169.254)
+      if (a === 172 && b >= 16 && b <= 31) return true;
+      if (a === 192 && b === 168) return true;
+      if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
     }
-
     // IPv6 루프백/ULA/링크로컬
-    if (host === '::1' || /^f[cde]/.test(host)) return false;
-
-    return true;
+    if (ip === '::1' || /^f[cde]/i.test(ip)) return true;
+    return false;
   }
 }

@@ -23,8 +23,8 @@ CREATE INDEX IF NOT EXISTS idx_inven_posts_crawled       ON inven_posts (crawled
 -- 2) 추출된 사이트 후보 (이름/설명은 관리자가 입력)
 CREATE TABLE IF NOT EXISTS inven_site_candidates (
   id             BIGSERIAL PRIMARY KEY,
-  url            TEXT        NOT NULL UNIQUE,
-  domain         TEXT        NOT NULL,
+  url            TEXT        NOT NULL,
+  domain         TEXT        NOT NULL UNIQUE,
   name           TEXT        NOT NULL DEFAULT '',
   description    TEXT        NOT NULL DEFAULT '',
   category       TEXT        NOT NULL DEFAULT '',

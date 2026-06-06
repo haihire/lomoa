@@ -85,7 +85,10 @@ function toFixedHundred<T extends { count: number }>(
     remainder -= 1;
     cursor += 1;
   }
-  return raw.map((r, idx) => ({ ...r.item, pct: pct[idx] }));
+  // 반올림 결과 0%인 항목은 숨김(0.x% 같은 미미한 값이 0%로 표시되는 노이즈 제거)
+  return raw
+    .map((r, idx) => ({ ...r.item, pct: pct[idx] }))
+    .filter((item) => item.pct > 0);
 }
 
 let monitoringCache: Dashboard | null = null;

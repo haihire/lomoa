@@ -227,7 +227,7 @@ export class MonitoringRepository {
         ${input.countryCode},
         ${input.osName},
         ${input.browserName},
-        CURRENT_DATE,
+        (NOW() AT TIME ZONE 'Asia/Seoul')::date,
         NOW()
       )
       ON CONFLICT (path, device_type, country_code, os_name, browser_name, visit_day)
@@ -322,14 +322,15 @@ export class MonitoringRepository {
 
   async findPageVisitSeriesDays(days: number) {
     // visit_day(방문 날짜)별 visits 합 = 그날 실제 방문 횟수. generate_series로 빈 날도 0.
+    // 일자 경계는 한국시간(Asia/Seoul) 기준 — DB 서버 타임존(프로덕션=UTC)과 무관하게 '오늘'까지 표시.
     return this.prisma.$queryRaw<
       Array<{ bucket: string; count: bigint | number }>
     >`
       SELECT TO_CHAR(d.day, 'MM-DD') AS bucket,
              COALESCE(SUM(p.visits), 0) AS count
       FROM generate_series(
-             (CURRENT_DATE - ((${days}::int - 1) * INTERVAL '1 day'))::date,
-             CURRENT_DATE,
+             ((NOW() AT TIME ZONE 'Asia/Seoul')::date - ((${days}::int - 1) * INTERVAL '1 day'))::date,
+             (NOW() AT TIME ZONE 'Asia/Seoul')::date,
              INTERVAL '1 day'
            ) AS d(day)
       LEFT JOIN apm_page_visits p ON p.visit_day = d.day
@@ -339,36 +340,40 @@ export class MonitoringRepository {
   }
 
   async findSiteClickSeriesDays(days: number) {
-    // 데이터 없는 날도 0으로 채우기 (generate_series + LEFT JOIN)
+    // 데이터 없는 날도 0으로 채우기 (generate_series + LEFT JOIN). 일자 경계는 한국시간 기준.
     return this.prisma.$queryRaw<
       Array<{ bucket: string; count: bigint | number }>
     >`
       SELECT TO_CHAR(d.day, 'MM-DD') AS bucket,
              COUNT(c.id) AS count
       FROM generate_series(
-             (CURRENT_DATE - ((${days}::int - 1) * INTERVAL '1 day'))::date,
-             CURRENT_DATE,
+             ((NOW() AT TIME ZONE 'Asia/Seoul')::date - ((${days}::int - 1) * INTERVAL '1 day'))::date,
+             (NOW() AT TIME ZONE 'Asia/Seoul')::date,
              INTERVAL '1 day'
            ) AS d(day)
-      LEFT JOIN apm_site_clicks c ON DATE(c.created_at) = d.day
+      LEFT JOIN apm_site_clicks c
+        ON c.created_at >= d.day AT TIME ZONE 'Asia/Seoul'
+       AND c.created_at < (d.day + INTERVAL '1 day') AT TIME ZONE 'Asia/Seoul'
       GROUP BY d.day
       ORDER BY d.day ASC
     `;
   }
 
   async findYoutubeClickSeriesDays(days: number) {
-    // 데이터 없는 날도 0으로 채우기 (generate_series + LEFT JOIN)
+    // 데이터 없는 날도 0으로 채우기 (generate_series + LEFT JOIN). 일자 경계는 한국시간 기준.
     return this.prisma.$queryRaw<
       Array<{ bucket: string; count: bigint | number }>
     >`
       SELECT TO_CHAR(d.day, 'MM-DD') AS bucket,
              COUNT(c.id) AS count
       FROM generate_series(
-             (CURRENT_DATE - ((${days}::int - 1) * INTERVAL '1 day'))::date,
-             CURRENT_DATE,
+             ((NOW() AT TIME ZONE 'Asia/Seoul')::date - ((${days}::int - 1) * INTERVAL '1 day'))::date,
+             (NOW() AT TIME ZONE 'Asia/Seoul')::date,
              INTERVAL '1 day'
            ) AS d(day)
-      LEFT JOIN apm_youtube_clicks c ON DATE(c.created_at) = d.day
+      LEFT JOIN apm_youtube_clicks c
+        ON c.created_at >= d.day AT TIME ZONE 'Asia/Seoul'
+       AND c.created_at < (d.day + INTERVAL '1 day') AT TIME ZONE 'Asia/Seoul'
       GROUP BY d.day
       ORDER BY d.day ASC
     `;

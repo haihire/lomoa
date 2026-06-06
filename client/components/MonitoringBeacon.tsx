@@ -74,38 +74,43 @@ export default function MonitoringBeacon() {
     }
 
     let sent = false;
-    const report = () => {
+    const ms = (v: number) => (v > 0 ? Math.round(v) : null);
+    const report = (isUnloading = false) => {
       if (sent) return;
       const nav = performance.getEntriesByType("navigation")[0] as
         | PerformanceNavigationTiming
         | undefined;
-      if (!nav || !nav.loadEventEnd) return; // load 완료 전이면 보류
+      if (!nav) return;
+      // load 완료 전이면 보류 — 단, 이탈 시점엔 부분 지표라도 전송(느린 로딩 이탈 추적)
+      if (!nav.loadEventEnd && !isUnloading) return;
       sent = true;
       lcpObserver?.disconnect();
       send({
         type: "page-load",
         path: "/",
         deviceType: classifyDevice(navigator.userAgent ?? ""),
-        ttfb: Math.round(nav.responseStart),
-        dcl: Math.round(nav.domContentLoadedEventEnd),
-        load: Math.round(nav.loadEventEnd),
+        ttfb: ms(nav.responseStart),
+        dcl: ms(nav.domContentLoadedEventEnd),
+        load: ms(nav.loadEventEnd),
         lcp: lcp ? Math.round(lcp) : null,
       });
     };
 
-    const onLoad = () => window.setTimeout(report, 0);
+    const onLoad = () => window.setTimeout(() => report(false), 0);
     if (document.readyState === "complete") {
-      window.setTimeout(report, 0);
+      window.setTimeout(() => report(false), 0);
     } else {
       window.addEventListener("load", onLoad, { once: true });
     }
-    // 탭을 빨리 닫는 경우 대비: 숨김 전 마지막 보고 시도
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") report();
-    });
+    // 이탈(탭 닫기/전환) 시 부분 지표라도 보고
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") report(true);
+    };
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       window.removeEventListener("load", onLoad);
+      document.removeEventListener("visibilitychange", onVisibility);
       lcpObserver?.disconnect();
     };
   }, []);

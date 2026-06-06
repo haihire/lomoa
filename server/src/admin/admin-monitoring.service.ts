@@ -230,6 +230,13 @@ export class AdminMonitoringService implements OnModuleInit {
         Math.round(Number(process.hrtime.bigint() - startedAt) / 1_000_000);
 
       const req = client.get(url, { timeout: 15_000 }, (res) => {
+        const status = res.statusCode ?? 0;
+        // 2xx만 정상 측정 — 3xx/4xx/5xx의 작은 응답이 평균을 왜곡하지 않도록 실패 처리
+        if (status < 200 || status >= 300) {
+          res.resume();
+          req.destroy(new Error(`probe status ${status}`));
+          return;
+        }
         const ttfbMs = elapsed();
         res.on('data', () => undefined); // 본문 소비
         res.on('end', () => resolve({ ttfbMs, loadMs: elapsed() }));

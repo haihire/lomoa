@@ -390,7 +390,7 @@ export class MonitoringRepository {
              ROUND(AVG(s.dcl_ms))::int  AS avg_dcl,
              ROUND(AVG(s.lcp_ms))::int  AS avg_lcp,
              ROUND(AVG(s.load_ms))::int AS avg_load,
-             COUNT(s.ttfb_ms) AS count
+             COUNT(s.bucket_start) AS count
       FROM buckets b
       LEFT JOIN samples s ON s.bucket_start = b.bucket_start
       GROUP BY b.bucket_start

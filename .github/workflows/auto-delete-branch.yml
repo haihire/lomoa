@@ -25,4 +25,6 @@ jobs:
             fi
           done
           echo "Deleting sub-branch: $HEAD_BRANCH"
-          gh api --method DELETE "repos/$REPO/git/refs/heads/$HEAD_BRANCH"
+          # ref가 이미 없어도(수동 삭제·중복 트리거 등) 워크플로우가 실패하지 않도록 멱등 처리
+          gh api --method DELETE "repos/$REPO/git/refs/heads/$HEAD_BRANCH" \
+            || echo "Branch already deleted or missing: $HEAD_BRANCH"

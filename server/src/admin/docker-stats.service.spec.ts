@@ -180,6 +180,71 @@ describe('DockerStatsService', () => {
     });
   });
 
+  describe('getContainerStatuses', () => {
+    function psLine(overrides: Record<string, string> = {}): string {
+      return JSON.stringify({
+        Names: 'daloa-nest',
+        State: 'running',
+        Status: 'Up 3 hours (healthy)',
+        ...overrides,
+      });
+    }
+
+    it('parses state, status, and health for a known container', async () => {
+      const { service } = createService();
+      mockExecSuccess(psLine());
+
+      const statuses = await service.getContainerStatuses();
+
+      expect(statuses).toHaveLength(1);
+      expect(statuses[0]).toMatchObject({
+        name: 'daloa-nest',
+        label: 'nest',
+        state: 'running',
+        status: 'Up 3 hours (healthy)',
+        health: 'healthy',
+      });
+    });
+
+    it('includes exited containers with empty health', async () => {
+      const { service } = createService();
+      mockExecSuccess(
+        psLine({
+          Names: 'daloa-redis',
+          State: 'exited',
+          Status: 'Exited (0) 5 minutes ago',
+        }),
+      );
+
+      const statuses = await service.getContainerStatuses();
+
+      expect(statuses[0]).toMatchObject({
+        label: 'redis',
+        state: 'exited',
+        health: '',
+      });
+    });
+
+    it('filters out unknown containers', async () => {
+      const { service } = createService();
+      mockExecSuccess([psLine(), psLine({ Names: 'unrelated' })].join('\n'));
+
+      const statuses = await service.getContainerStatuses();
+
+      expect(statuses).toHaveLength(1);
+      expect(statuses[0].label).toBe('nest');
+    });
+
+    it('returns [] when docker ps fails', async () => {
+      const { service } = createService();
+      mockExecError('docker daemon not running');
+
+      const statuses = await service.getContainerStatuses();
+
+      expect(statuses).toEqual([]);
+    });
+  });
+
   describe('saveContainerStats', () => {
     it('saves metrics for each recognised container', async () => {
       const { service, saveDockerMetric } = createService();

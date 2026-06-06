@@ -11,34 +11,6 @@ import {
   YAxis,
 } from "recharts";
 
-interface ContainerStat {
-  name: string;
-  label: string;
-  cpuPercent: number;
-  memUsedMb: number;
-  memTotalMb: number;
-  memPercent: number;
-  netInMb: number;
-  netOutMb: number;
-}
-
-interface HostStats {
-  cpuPercent: number;
-  memUsedMb: number;
-  memTotalMb: number;
-  memPercent: number;
-  diskUsedGb: number;
-  diskTotalGb: number;
-  diskPercent: number;
-}
-
-interface ContainerHistoryPoint {
-  bucket: string;
-  avgCpu: number;
-  avgMem: number;
-  avgMemUsedMb: number;
-}
-
 type Dashboard = {
   summary: {
     windowMinutes: number;
@@ -117,9 +89,6 @@ function toFixedHundred<T extends { count: number }>(
 }
 
 let monitoringCache: Dashboard | null = null;
-let containersCache: ContainerStat[] | null = null;
-let hostCache: HostStats | null = null;
-const containerHistoryCache: Record<string, ContainerHistoryPoint[]> = {};
 
 export default function MonitoringPage() {
   const [data, setData] = useState<Dashboard>(
@@ -133,18 +102,6 @@ export default function MonitoringPage() {
   const [sectionTab, setSectionTab] = useState<
     "sites" | "stat-builds" | "youtube"
   >("sites");
-  const [containers, setContainers] = useState<ContainerStat[]>(
-    containersCache ?? [],
-  );
-  const [host, setHost] = useState<HostStats | null>(hostCache);
-  const [containersLoading, setContainersLoading] = useState(
-    containersCache === null,
-  );
-  const [containerTab, setContainerTab] = useState<string>("전체");
-  const [containerHistory, setContainerHistory] = useState<
-    ContainerHistoryPoint[]
-  >([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
   const hasLoadedRef = useRef(false);
   const prevVisitCountRef = useRef(0);
 
@@ -196,73 +153,6 @@ export default function MonitoringPage() {
       clearInterval(timer);
     };
   }, []);
-
-  useEffect(() => {
-    let alive = true;
-    async function loadContainers() {
-      try {
-        const res = await fetch("/api/admin/monitoring/containers", {
-          cache: "no-store",
-        });
-        if (!alive || !res.ok) return;
-        const raw = (await res.json()) as
-          | ContainerStat[]
-          | { containers: ContainerStat[]; host: HostStats | null };
-        const parsed = Array.isArray(raw)
-          ? { containers: raw, host: null }
-          : { containers: raw.containers ?? [], host: raw.host ?? null };
-        containersCache = parsed.containers;
-        hostCache = parsed.host;
-        setContainers(parsed.containers);
-        setHost(parsed.host);
-      } catch {
-        // keep previous
-      } finally {
-        if (alive) setContainersLoading(false);
-      }
-    }
-    void loadContainers();
-    const timer = setInterval(() => void loadContainers(), 10_000);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (containerTab === "전체") {
-      setContainerHistory([]);
-      return;
-    }
-    let alive = true;
-    const cached = containerHistoryCache[containerTab];
-    if (cached) {
-      setContainerHistory(cached);
-    } else {
-      setHistoryLoading(true);
-      setContainerHistory([]);
-    }
-    async function loadHistory() {
-      try {
-        const res = await fetch(
-          `/api/admin/monitoring/container-history?container=${containerTab}`,
-          { cache: "no-store" },
-        );
-        if (!alive || !res.ok) return;
-        const data = (await res.json()) as ContainerHistoryPoint[];
-        containerHistoryCache[containerTab] = data;
-        setContainerHistory(data);
-      } catch {
-        // keep previous
-      } finally {
-        if (alive) setHistoryLoading(false);
-      }
-    }
-    void loadHistory();
-    return () => {
-      alive = false;
-    };
-  }, [containerTab]);
 
   useEffect(() => {
     let alive = true;
@@ -411,204 +301,6 @@ export default function MonitoringPage() {
       )}
 
       <div className="grid grid-cols-1 gap-4">
-        <div className="admin-card p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-semibold">컨테이너 현황</p>
-            <div className="flex gap-1">
-              <button
-                type="button"
-                onClick={() => setContainerTab("전체")}
-                className={`admin-btn admin-btn-sm ${containerTab === "전체" ? "admin-btn-primary" : "admin-btn-secondary"}`}
-              >
-                전체
-              </button>
-              {containers.map((c) => (
-                <button
-                  key={c.name}
-                  type="button"
-                  onClick={() => setContainerTab(c.label)}
-                  className={`admin-btn admin-btn-sm ${containerTab === c.label ? "admin-btn-primary" : "admin-btn-secondary"}`}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {containerTab === "전체" ? (
-            containersLoading ? (
-              <p className="text-xs text-[color:var(--admin-text-muted)]">
-                불러오는 중...
-              </p>
-            ) : containers.length === 0 ? (
-              <p className="text-xs text-[color:var(--admin-text-muted)]">
-                컨테이너 데이터 없음 (EC2 환경에서만 표시됩니다)
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {host && (
-                  <div className="rounded border border-[color:var(--admin-border)] bg-slate-50 p-2.5">
-                    <p className="mb-1.5 text-xs font-semibold text-[color:var(--admin-text)]">
-                      EC2 호스트 전체
-                    </p>
-                    <div className="grid gap-1 text-xs text-[color:var(--admin-text-muted)] sm:grid-cols-3">
-                      <p>
-                        CPU{" "}
-                        <span className="font-medium text-[color:var(--admin-text)]">
-                          {host.cpuPercent.toFixed(1)}%
-                        </span>
-                      </p>
-                      <p>
-                        메모리{" "}
-                        <span className="font-medium text-[color:var(--admin-text)]">
-                          {host.memPercent.toFixed(1)}%
-                        </span>
-                        <span className="ml-1">
-                          ({host.memUsedMb}MB / {host.memTotalMb}MB)
-                        </span>
-                      </p>
-                      <p>
-                        디스크{" "}
-                        <span className="font-medium text-[color:var(--admin-text)]">
-                          {host.diskPercent}%
-                        </span>
-                        <span className="ml-1">
-                          ({host.diskUsedGb}GB / {host.diskTotalGb}GB)
-                        </span>
-                      </p>
-                    </div>
-                  </div>
-                )}
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  {containers.map((c) => (
-                    <div
-                      key={c.name}
-                      className="rounded border border-[color:var(--admin-border)] p-2.5"
-                    >
-                      <p className="mb-1.5 text-xs font-semibold">{c.label}</p>
-                      <div className="space-y-0.5 text-xs text-[color:var(--admin-text-muted)]">
-                        <p>
-                          CPU{" "}
-                          <span className="font-medium text-[color:var(--admin-text)]">
-                            {c.cpuPercent.toFixed(1)}%
-                          </span>
-                        </p>
-                        <p>
-                          메모리{" "}
-                          <span className="font-medium text-[color:var(--admin-text)]">
-                            {c.memPercent.toFixed(1)}%
-                          </span>
-                          <span className="ml-1">
-                            ({c.memUsedMb}MB / {c.memTotalMb}MB)
-                          </span>
-                        </p>
-                        <p>
-                          NET ↓{c.netInMb}MB · ↑{c.netOutMb}MB
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <p className="mb-1 text-xs text-[color:var(--admin-text-muted)]">
-                  CPU % (7일)
-                </p>
-                <div className="h-28">
-                  {historyLoading ? (
-                    <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">
-                      불러오는 중...
-                    </div>
-                  ) : containerHistory.length === 0 ? (
-                    <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">
-                      데이터 없음
-                    </div>
-                  ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart
-                        data={containerHistory}
-                        onMouseEnter={() => setActiveChart("container-cpu")}
-                        onMouseLeave={() => setActiveChart(null)}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis
-                          dataKey="bucket"
-                          tick={{ fontSize: 9, fill: "#6b7280" }}
-                        />
-                        <YAxis
-                          tick={{ fontSize: 10, fill: "#6b7280" }}
-                          unit="%"
-                        />
-                        <Tooltip
-                          active={activeChart === "container-cpu"}
-                          formatter={(v) => [`${v ?? 0}%`, "CPU"]}
-                          wrapperStyle={{ pointerEvents: "none" }}
-                        />
-                        <Area
-                          type="linear"
-                          dataKey="avgCpu"
-                          stroke="#2563eb"
-                          fill="#bfdbfe"
-                          name="CPU %"
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-              </div>
-              <div>
-                <p className="mb-1 text-xs text-[color:var(--admin-text-muted)]">
-                  메모리 % (7일)
-                </p>
-                <div className="h-28">
-                  {historyLoading ? (
-                    <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">
-                      불러오는 중...
-                    </div>
-                  ) : containerHistory.length === 0 ? (
-                    <div className="grid h-full place-items-center text-[11px] text-[color:var(--admin-text-muted)]">
-                      데이터 없음
-                    </div>
-                  ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart
-                        data={containerHistory}
-                        onMouseEnter={() => setActiveChart("container-mem")}
-                        onMouseLeave={() => setActiveChart(null)}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis
-                          dataKey="bucket"
-                          tick={{ fontSize: 9, fill: "#6b7280" }}
-                        />
-                        <YAxis
-                          tick={{ fontSize: 10, fill: "#6b7280" }}
-                          unit="%"
-                        />
-                        <Tooltip
-                          active={activeChart === "container-mem"}
-                          formatter={(v) => [`${v ?? 0}%`, "메모리"]}
-                          wrapperStyle={{ pointerEvents: "none" }}
-                        />
-                        <Area
-                          type="linear"
-                          dataKey="avgMem"
-                          stroke="#7c3aed"
-                          fill="#ede9fe"
-                          name="메모리 %"
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
         <div className="grid auto-rows-min content-start grid-cols-1 gap-4 xl:grid-cols-2">
           <div className="admin-card p-3">
             <div className="mb-2 flex items-center justify-between">

@@ -39,6 +39,14 @@ export interface ContainerHistoryPoint {
   avgMemUsedMb: number;
 }
 
+export interface ContainerStatus {
+  name: string;
+  label: string;
+  state: string; // running | exited | restarting | ...
+  status: string; // 원문 (예: "Up 3 hours (healthy)")
+  health: string; // healthy | unhealthy | starting | '' (헬스체크 없음)
+}
+
 const CONTAINER_LABELS: Record<string, string> = {
   'daloa-nest': 'nest',
   'daloa-nginx': 'nginx',
@@ -144,6 +152,56 @@ export class DockerStatsService {
     } catch (err: unknown) {
       this.logger.warn(
         `docker stats failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * `docker ps -a`로 컨테이너 가동 상태/업타임/헬스를 조회한다.
+   * 중지된(exited) 컨테이너도 포함되므로 "현황" 표시에 적합.
+   */
+  async getContainerStatuses(): Promise<ContainerStatus[]> {
+    try {
+      const { stdout } = await execFileAsync(
+        'docker',
+        ['ps', '-a', '--format', '{{json .}}'],
+        { timeout: 10000 },
+      );
+
+      const result: ContainerStatus[] = [];
+
+      for (const line of stdout.trim().split('\n')) {
+        if (!line.trim()) continue;
+        let raw: Record<string, string>;
+        try {
+          raw = JSON.parse(line) as Record<string, string>;
+        } catch {
+          continue;
+        }
+
+        const name = (raw['Names'] ?? raw['names'] ?? '').replace(/^\//, '');
+        const label = CONTAINER_LABELS[name];
+        if (!label) continue;
+
+        const status = raw['Status'] ?? raw['status'] ?? '';
+        const state = (raw['State'] ?? raw['state'] ?? '').toLowerCase();
+        const healthMatch =
+          /\((?:health: )?(healthy|unhealthy|starting)\)/i.exec(status);
+
+        result.push({
+          name,
+          label,
+          state,
+          status,
+          health: healthMatch ? healthMatch[1].toLowerCase() : '',
+        });
+      }
+
+      return result;
+    } catch (err: unknown) {
+      this.logger.warn(
+        `docker ps failed: ${err instanceof Error ? err.message : String(err)}`,
       );
       return [];
     }

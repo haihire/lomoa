@@ -6,7 +6,6 @@ import { AdminCacheController } from './admin-cache.controller';
 import { AdminCharactersController } from './admin-characters.controller';
 import { AdminSyncController } from './admin-sync.controller';
 import { AdminGuard, AdminWriteGuard } from './admin.guard';
-import { StreamersModule } from '../streamers/streamers.module';
 import { SitesModule } from '../sites/sites.module';
 import { AdminMonitoringController } from './admin-monitoring.controller';
 import { AdminMonitoringService } from './admin-monitoring.service';
@@ -23,7 +22,7 @@ import { SiteExtractorService } from './site-extractor.service';
 import { SiteSuggestService } from './site-suggest.service';
 
 @Module({
-  imports: [StreamersModule, SitesModule],
+  imports: [SitesModule],
   controllers: [
     AdminAuthController,
     AdminSitesController,

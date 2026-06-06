@@ -191,8 +191,8 @@ model inven_posts {
 
 model inven_site_candidates {
   id             BigInt   @id @default(autoincrement())
-  url            String   @unique
-  domain         String
+  url            String
+  domain         String   @unique
   name           String   @default("")
   description    String   @default("")
   category       String   @default("")

@@ -125,7 +125,8 @@ export class AdminInvenRepository {
 
   /**
    * 추출된 사이트 후보를 inven_site_candidates에 upsert한다.
-   * url 충돌 시 pending 상태면 언급 횟수만 갱신 (added/rejected는 건드리지 않음).
+   * 도메인 단위로 1행만 유지 — domain 충돌 시 pending 상태면 대표 url(더 짧은 것)과
+   * 언급 횟수를 갱신 (added/rejected는 건드리지 않음).
    */
   async upsertCandidates(drafts: SiteCandidateDraft[]): Promise<number> {
     let saved = 0;
@@ -134,8 +135,12 @@ export class AdminInvenRepository {
         INSERT INTO inven_site_candidates
           (url, domain, name, description, category, mention_count, sample_post_id, status)
         VALUES (${d.url}, ${d.domain}, '', '', '', ${d.mention_count}, ${d.sample_post_id}, 'pending')
-        ON CONFLICT (url) DO UPDATE SET
-          mention_count = EXCLUDED.mention_count
+        ON CONFLICT (domain) DO UPDATE SET
+          mention_count = EXCLUDED.mention_count,
+          url = CASE
+            WHEN length(EXCLUDED.url) < length(inven_site_candidates.url)
+            THEN EXCLUDED.url ELSE inven_site_candidates.url
+          END
         WHERE inven_site_candidates.status = 'pending'
       `;
       saved += 1;

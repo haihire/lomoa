@@ -20,6 +20,7 @@ import { AdminInvenRepository } from './repositories/admin-inven.repository';
 import { AdminInvenCronService } from './admin-inven-cron.service';
 import { AdminInvenPipelineService } from './admin-inven-pipeline.service';
 import { SiteExtractorService } from './site-extractor.service';
+import { SiteSuggestService } from './site-suggest.service';
 
 @Module({
   imports: [StreamersModule, SitesModule],
@@ -46,6 +47,7 @@ import { SiteExtractorService } from './site-extractor.service';
     AdminInvenCronService,
     AdminInvenPipelineService,
     SiteExtractorService,
+    SiteSuggestService,
   ],
   exports: [AdminAuthService],
 })

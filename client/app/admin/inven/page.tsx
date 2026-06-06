@@ -129,6 +129,10 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
   const [suggesting, setSuggesting] = useState(false);
   // AI가 추천한 아이콘 (og:image 자동 fetch와 별도 보관 → 선택 UI)
   const [aiIcon, setAiIcon] = useState<string>("");
+  // 자동 fetch로 가져온 기본 아이콘 (AI 선택 후에도 복구 가능하도록 보관)
+  const [fetchedIcon, setFetchedIcon] = useState<string>("");
+  // 경쟁 상태 방지: 현재 열린 후보 ID와 응답 대상 ID가 다르면 폼 갱신 무시
+  const [activeFetchId, setActiveFetchId] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -160,10 +164,18 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
       icon: "",
     });
     setFormError("");
+    setActiveFetchId(c.id);
     // 모달 열리자마자 og:image 자동 fetch (Gemini 없이)
     apiFetch(`/site-candidates/${c.id}/icon`)
       .then((res) => {
-        if (res.icon) setForm((p) => ({ ...p, icon: res.icon as string }));
+        setActiveFetchId((cur) => {
+          if (cur === c.id && res.icon) {
+            const iconUrl = res.icon as string;
+            setForm((p) => ({ ...p, icon: iconUrl }));
+            setFetchedIcon(iconUrl);
+          }
+          return cur;
+        });
       })
       .catch(() => {});
   };
@@ -197,6 +209,8 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
     setAiFilled(false);
     setSuggesting(false);
     setAiIcon("");
+    setFetchedIcon("");
+    setActiveFetchId(null);
   };
 
   // 모달 저장 → 후보 승인 API (loa_sites 등록 + status=added)
@@ -370,10 +384,10 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
                         onChange={(e) => setForm((p) => ({ ...p, [field]: e.target.value }))}
                         className="admin-input"
                       />
-                      {field === "icon" && aiIcon && aiIcon !== form.icon && (
+                      {field === "icon" && aiIcon && aiIcon !== fetchedIcon && (
                         <div className="mt-2 flex items-center gap-3">
                           <span className="text-xs text-[color:var(--admin-text-muted)]">아이콘 선택</span>
-                          {[{ src: form.icon, label: "현재" }, { src: aiIcon, label: "AI" }].map(({ src, label }) => (
+                          {[{ src: fetchedIcon, label: "기본" }, { src: aiIcon, label: "AI" }].map(({ src, label }) => (
                             src ? (
                               <button
                                 key={label}

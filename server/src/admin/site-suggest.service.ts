@@ -74,6 +74,15 @@ export class SiteSuggestService {
     });
   }
 
+  /** og:image 또는 파비콘 URL만 반환한다 (Gemini 호출 없음). */
+  async fetchIcon(input: { url: string; domain: string }): Promise<string> {
+    const meta = await this.fetchMeta(input.url);
+    return (
+      meta.ogImage ||
+      `https://www.google.com/s2/favicons?domain=${input.domain}&sz=64`
+    );
+  }
+
   /** 사이트 메타를 fetch해 Gemini로 추천 필드를 생성한다. */
   async suggest(input: {
     url: string;

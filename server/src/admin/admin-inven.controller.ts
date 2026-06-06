@@ -12,6 +12,7 @@ import {
 import { AdminGuard, AdminWriteGuard } from './admin.guard';
 import { AdminInvenRepository } from './repositories/admin-inven.repository';
 import { AdminInvenPipelineService } from './admin-inven-pipeline.service';
+import { SiteSuggestService } from './site-suggest.service';
 import { SitesRepository } from '../sites/sites.repository';
 import { SitesService } from '../sites/sites.service';
 
@@ -21,6 +22,7 @@ export class AdminInvenController {
   constructor(
     private readonly invenRepo: AdminInvenRepository,
     private readonly pipeline: AdminInvenPipelineService,
+    private readonly suggestService: SiteSuggestService,
     private readonly sitesRepo: SitesRepository,
     private readonly sitesService: SitesService,
   ) {}
@@ -88,6 +90,18 @@ export class AdminInvenController {
     await this.invenRepo.updateCandidateStatus(id, 'rejected');
     await this.invenRepo.addToBlacklist(cand.domain, '관리자 거부');
     return { ok: true };
+  }
+
+  /**
+   * 추천 후보에 대해 Gemini로 name/category/description/icon을 생성한다.
+   * 버튼 클릭 시에만 호출됨(자동 실행 없음) — 토큰 보호. master 전용.
+   */
+  @Post('site-candidates/:id/suggest')
+  @UseGuards(AdminWriteGuard)
+  async suggestCandidate(@Param('id', ParseIntPipe) id: number) {
+    const cand = await this.invenRepo.getSiteCandidateById(id);
+    if (!cand) throw new NotFoundException('후보를 찾을 수 없습니다');
+    return this.suggestService.suggest({ url: cand.url, domain: cand.domain });
   }
 
   /** 게시글 목록 (인기순) — 디버그/확인용 */

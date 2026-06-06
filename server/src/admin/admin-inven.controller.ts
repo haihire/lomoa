@@ -92,6 +92,18 @@ export class AdminInvenController {
     return { ok: true };
   }
 
+  /** 사이트 아이콘(og:image → 파비콘)만 반환한다. Gemini 호출 없음. */
+  @Get('site-candidates/:id/icon')
+  async getCandidateIcon(@Param('id', ParseIntPipe) id: number) {
+    const cand = await this.invenRepo.getSiteCandidateById(id);
+    if (!cand) throw new NotFoundException('후보를 찾을 수 없습니다');
+    const icon = await this.suggestService.fetchIcon({
+      url: cand.url,
+      domain: cand.domain,
+    });
+    return { icon };
+  }
+
   /**
    * 추천 후보에 대해 Gemini로 name/category/description/icon을 생성한다.
    * 버튼 클릭 시에만 호출됨(자동 실행 없음) — 토큰 보호. master 전용.

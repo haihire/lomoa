@@ -8,6 +8,9 @@ import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import * as dns from 'dns/promises';
+import { lookup as dnsLookup } from 'dns';
+import * as http from 'http';
+import * as https from 'https';
 
 export interface SiteSuggestion {
   name: string;
@@ -34,6 +37,9 @@ interface SiteMeta {
 export class SiteSuggestService {
   private readonly logger = new Logger(SiteSuggestService.name);
   private readonly genAI: GoogleGenerativeAI | null;
+  // DNS rebinding 방어: 연결 직전(Time-of-Use) IP를 재검증하는 커스텀 에이전트
+  private readonly httpAgent: http.Agent;
+  private readonly httpsAgent: https.Agent;
 
   constructor(private readonly config: ConfigService) {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
@@ -41,10 +47,38 @@ export class SiteSuggestService {
     if (!apiKey) {
       this.logger.warn('GEMINI_API_KEY 미설정 — 사이트 AI 추천 비활성화');
     }
+
+    // axios가 실제로 연결할 IP를 lookup 단계에서 검사 → isSafeUrl 선검증과
+    // 실제 연결 사이 DNS 레코드가 바뀌는 rebinding 공격을 차단한다.
+    const secureLookup: http.AgentOptions['lookup'] = (
+      hostname,
+      options,
+      callback,
+    ) => {
+      dnsLookup(hostname, options, (err, address, family) => {
+        if (err) return callback(err, '', 4);
+        const resolved = Array.isArray(address)
+          ? address
+          : [{ address, family }];
+        if (resolved.some((r) => this.isPrivateIp(r.address))) {
+          return callback(new Error('사설 IP 접근이 차단되었습니다'), '', 4);
+        }
+        const first = resolved[0];
+        callback(null, first.address, first.family);
+      });
+    };
+    this.httpAgent = new http.Agent({ keepAlive: false, lookup: secureLookup });
+    this.httpsAgent = new https.Agent({
+      keepAlive: false,
+      lookup: secureLookup,
+    });
   }
 
   /** 사이트 메타를 fetch해 Gemini로 추천 필드를 생성한다. */
-  async suggest(input: { url: string; domain: string }): Promise<SiteSuggestion> {
+  async suggest(input: {
+    url: string;
+    domain: string;
+  }): Promise<SiteSuggestion> {
     if (!this.genAI) {
       throw new ServiceUnavailableException(
         'GEMINI_API_KEY가 설정되지 않았습니다',
@@ -62,7 +96,11 @@ export class SiteSuggestService {
           type: SchemaType.OBJECT,
           properties: {
             name: { type: SchemaType.STRING },
-            category: { type: SchemaType.STRING, enum: CATEGORIES },
+            category: {
+              type: SchemaType.STRING,
+              format: 'enum',
+              enum: CATEGORIES,
+            },
             description: { type: SchemaType.STRING },
             icon: { type: SchemaType.STRING },
           },
@@ -107,7 +145,8 @@ export class SiteSuggestService {
 
     // enum을 강제하지만, 모델이 범위 밖 값을 내도 '기타'로 방어
     const category =
-      parsed.category && CATEGORIES.includes(parsed.category.trim())
+      typeof parsed.category === 'string' &&
+      CATEGORIES.includes(parsed.category.trim())
         ? parsed.category.trim()
         : '기타';
 
@@ -146,6 +185,8 @@ export class SiteSuggestService {
         timeout: 8000,
         maxContentLength: 3 * 1024 * 1024,
         maxRedirects: 2,
+        httpAgent: this.httpAgent,
+        httpsAgent: this.httpsAgent,
         headers: {
           'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
@@ -206,8 +247,10 @@ export class SiteSuggestService {
 
   /** 사설/루프백/링크로컬/예약 IP 여부. */
   private isPrivateIp(ip: string): boolean {
+    // ::ffff:127.0.0.1 같은 IPv4-mapped IPv6는 IPv4 부분으로 정규화 후 검사
+    const normalized = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
     // IPv4 리터럴 사설/예약 대역
-    const m = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    const m = normalized.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
     if (m) {
       const a = Number(m[1]);
       const b = Number(m[2]);
@@ -217,8 +260,13 @@ export class SiteSuggestService {
       if (a === 192 && b === 168) return true;
       if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
     }
-    // IPv6 루프백/ULA/링크로컬
-    if (ip === '::1' || /^f[cde]/i.test(ip)) return true;
+    // IPv6 미지정(::)/루프백/ULA/링크로컬
+    if (
+      normalized === '::' ||
+      normalized === '::1' ||
+      /^f[cde]/i.test(normalized)
+    )
+      return true;
     return false;
   }
 }

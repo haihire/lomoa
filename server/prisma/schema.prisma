@@ -23,13 +23,14 @@ model apm_page_visits {
   user_agent   String
   referrer     String?
   visits       Int      @default(1)
+  visit_day    DateTime @default(now()) @db.Date
   last_seen_at DateTime @default(now()) @db.Timestamptz(6)
   created_at   DateTime @default(now()) @db.Timestamptz(6)
   country_code String   @default("UNKNOWN")
   os_name      String   @default("Unknown")
   browser_name String   @default("Unknown")
 
-  @@unique([path, device_type, country_code, os_name, browser_name], map: "idx_16508_uk_page_device_country_os_browser")
+  @@unique([path, device_type, country_code, os_name, browser_name, visit_day], map: "uk_page_device_country_os_browser_day")
 }
 
 model apm_request_timings {

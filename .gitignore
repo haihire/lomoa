@@ -48,6 +48,9 @@ site-finder/output/
 server/tsconfig.tsbuildinfo
 server/tsconfig.build.tsbuildinfo
 
+# Prisma generated client (빌드 시 prisma generate로 재생성 — prebuild)
+server/generated/
+
 # 이력서 (로컬 개인정보)
 이력서_개선안.md
 server/dist/

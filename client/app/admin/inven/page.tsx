@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { buildGuestNotice, useAdminRole } from "@/lib/admin-role";
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
@@ -18,32 +18,29 @@ interface SiteCandidate {
   created_at: string;
 }
 
-interface PipelineStatus {
-  running: boolean;
-  step: string;
-  stepIndex: number;
-  totalSteps: number;
-  percent: number;
-  message: string;
-  error: string | null;
-  startedAt: string | null;
-  finishedAt: string | null;
-  targetDate: string | null;
-}
-
 // ── 유틸 ──────────────────────────────────────────────────────────────────────
 
 async function apiFetch(path: string, opts?: RequestInit) {
   const res = await fetch(`/api/admin/inven${path}`, opts);
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const text = await res.text();
+    // 백엔드 에러 본문이 JSON이면 message만 추출해 사용자에게 노출
+    let msg = text;
+    try {
+      const j = JSON.parse(text) as { message?: unknown };
+      if (typeof j?.message === "string") msg = j.message;
+    } catch {
+      // JSON 아니면 원문 그대로
+    }
+    throw new Error(msg);
+  }
   return res.json() as Promise<Record<string, unknown>>;
 }
 
 // ── 컴포넌트 ──────────────────────────────────────────────────────────────────
 
 export default function AdminInvenPage() {
-  const [tab, setTab] = useState<"candidates" | "pipeline">("candidates");
-  // 게스트 권한 안내 (제목 아래 고정 표시) — 탭 전환 시 초기화
+  // 게스트 권한 안내 (제목 아래 고정 표시)
   const [accessNotice, setAccessNotice] = useState("");
   const role = useAdminRole();
   const isGuest = role === "guest";
@@ -53,16 +50,6 @@ export default function AdminInvenPage() {
     if (!isGuest) return true;
     setAccessNotice(buildGuestNotice(action));
     return false;
-  };
-
-  const switchTab = (t: "candidates" | "pipeline") => {
-    setAccessNotice("");
-    setTab(t);
-  };
-
-  const TAB_LABELS = {
-    candidates: "🔎 추천 사이트",
-    pipeline:   "⚙️ 수집 실행",
   };
 
   return (
@@ -78,27 +65,7 @@ export default function AdminInvenPage() {
         </pre>
       )}
 
-      {/* 탭 */}
-      <div className="flex gap-2 border-b border-[color:var(--admin-border)] pb-0">
-        {(Object.keys(TAB_LABELS) as Array<keyof typeof TAB_LABELS>).map((t) => (
-          <button
-            key={t}
-            onClick={() => switchTab(t)}
-            className={`px-4 py-2 text-sm rounded-t-lg transition-colors ${
-              tab === t
-                ? "bg-white border border-b-white border-[color:var(--admin-border)] -mb-px font-medium"
-                : "text-[color:var(--admin-muted)] hover:text-[color:var(--admin-fg)]"
-            }`}
-          >
-            {TAB_LABELS[t]}
-          </button>
-        ))}
-      </div>
-
-      <div className="pt-2">
-        {tab === "candidates" && <CandidatesTab requireMaster={requireMaster} />}
-        {tab === "pipeline" && <PipelineTab requireMaster={requireMaster} />}
-      </div>
+      <CandidatesTab requireMaster={requireMaster} />
     </div>
   );
 }
@@ -157,6 +124,9 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
   const [form, setForm] = useState<SiteForm>(EMPTY_SITE_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
+  // AI 추천 생성 후 모달을 채웠는지 표시 (안내 문구용)
+  const [aiFilled, setAiFilled] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -179,6 +149,7 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
   const openAddModal = (c: SiteCandidate) => {
     if (!requireMaster("사이트 추가")) return;
     setAddTarget(c);
+    setAiFilled(false);
     setForm({
       name: c.name || "",
       href: `https://${c.domain}`,
@@ -189,10 +160,34 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
     setFormError("");
   };
 
+  // 모달 안 "✨ AI 추천" → Gemini 호출(클릭 시에만) → 폼 자동 채움
+  const runAiSuggest = async () => {
+    if (!addTarget) return;
+    setSuggesting(true);
+    setFormError("");
+    try {
+      const s = await apiFetch(`/site-candidates/${addTarget.id}/suggest`, { method: "POST" });
+      setForm((p) => ({
+        ...p,
+        name: (s.name as string) || p.name,
+        category: (s.category as string) || p.category,
+        description: (s.description as string) || p.description,
+        icon: (s.icon as string) || p.icon,
+      }));
+      setAiFilled(true);
+    } catch (e) {
+      setFormError(e instanceof Error ? e.message : "AI 추천 실패");
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
   const closeAddModal = () => {
     setAddTarget(null);
     setForm(EMPTY_SITE_FORM);
     setFormError("");
+    setAiFilled(false);
+    setSuggesting(false);
   };
 
   // 모달 저장 → 후보 승인 API (loa_sites 등록 + status=added)
@@ -260,7 +255,7 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
         <div className="admin-card p-6 text-center">
           <p className="admin-page-subtitle">검토할 추천 사이트가 없습니다.</p>
           <p className="text-xs text-[color:var(--admin-muted)] mt-2">
-            「⚙️ 수집 실행」 탭에서 크롤링을 돌리면 새 사이트 후보가 모입니다.
+            수집이 돌면 인벤에서 언급된 새 사이트 후보가 여기에 모입니다.
           </p>
         </div>
       )}
@@ -300,7 +295,7 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
                   setConfirmTarget(c);
                 }}
                 disabled={busyId === c.id}
-                className="admin-btn admin-btn-secondary text-xs px-3 py-1"
+                className="admin-btn admin-btn-secondary text-xs px-3 py-1 whitespace-nowrap"
               >
                 블랙리스트 등록
               </button>
@@ -329,14 +324,29 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
               <h2 className="text-base font-semibold text-[color:var(--admin-text)]">
                 새 사이트 추가 · {addTarget.domain}
               </h2>
-              <button
-                onClick={closeAddModal}
-                disabled={saving}
-                className="text-[color:var(--admin-text-subtle)] hover:text-[color:var(--admin-text)] text-lg leading-none"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={runAiSuggest}
+                  disabled={saving || suggesting}
+                  className="admin-btn admin-btn-secondary text-xs px-3 py-1 whitespace-nowrap"
+                  title="Gemini로 이름·카테고리·설명·아이콘을 추천받아 폼을 채웁니다"
+                >
+                  {suggesting ? "AI 추천 중..." : "✨ AI 추천"}
+                </button>
+                <button
+                  onClick={closeAddModal}
+                  disabled={saving}
+                  className="text-[color:var(--admin-text-subtle)] hover:text-[color:var(--admin-text)] text-lg leading-none"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
+            {aiFilled && (
+              <p className="mb-4 rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-700">
+                ✨ AI가 추천한 값으로 채웠습니다. 검토 후 수정해서 저장하세요.
+              </p>
+            )}
             <div className="flex gap-6">
               {/* 폼 */}
               <div className="flex-1 min-w-0">
@@ -422,155 +432,6 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ── 수집 실행(파이프라인) 탭 ──────────────────────────────────────────────────
-
-const STEP_LABELS: Record<string, string> = {
-  crawl:   "크롤링",
-  save:    "DB 저장",
-  suggest: "사이트 추천",
-  done:    "완료",
-  error:   "오류",
-};
-
-function PipelineTab({ requireMaster }: { requireMaster: (action: string) => boolean }) {
-  const [status, setStatus] = useState<PipelineStatus | null>(null);
-  const [loading, setLoading] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const fetchStatus = async () => {
-    try {
-      const res = await apiFetch("/pipeline/status");
-      setStatus(res as unknown as PipelineStatus);
-      return res as unknown as PipelineStatus;
-    } catch {
-      return null;
-    }
-  };
-
-  const startPolling = () => {
-    if (pollRef.current) return;
-    pollRef.current = setInterval(async () => {
-      const s = await fetchStatus();
-      if (s && !s.running) stopPolling();
-    }, 2000);
-  };
-
-  const stopPolling = () => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-  };
-
-  useEffect(() => {
-    fetchStatus().then((s) => {
-      if (s?.running) startPolling();
-    });
-    return () => stopPolling();
-  }, []);
-
-  const handleRun = async () => {
-    if (!requireMaster("수집 실행")) return;
-    setLoading(true);
-    try {
-      await apiFetch("/pipeline/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      await fetchStatus();
-      startPolling();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const isRunning = status?.running ?? false;
-  const percent = status?.percent ?? 0;
-  const stepLabel = status?.step ? (STEP_LABELS[status.step] ?? status.step) : "";
-
-  return (
-    <div className="space-y-4 max-w-lg">
-      {/* 실행 버튼 */}
-      <div className="admin-card p-5 space-y-4">
-        <div>
-          <p className="text-sm font-medium">수동 수집 실행</p>
-          <p className="text-xs text-[color:var(--admin-muted)] mt-1">
-            어제 날짜 기준으로 크롤 → DB 저장 → 사이트 추출을 순서대로 실행합니다.
-          </p>
-        </div>
-
-        <button
-          onClick={handleRun}
-          disabled={isRunning || loading}
-          className="admin-btn admin-btn-primary w-full"
-        >
-          {isRunning ? "실행 중..." : "▶ 수집 시작"}
-        </button>
-
-        {(isRunning || (status && status.percent > 0)) && (
-          <div className="space-y-2">
-            <div className="flex justify-between text-xs">
-              <span className="text-[color:var(--admin-muted)]">
-                {stepLabel}
-                {status?.targetDate && ` (${status.targetDate})`}
-              </span>
-              <span className="font-medium">{percent}%</span>
-            </div>
-            <div className="w-full bg-gray-100 rounded-full h-2">
-              <div
-                className={`h-2 rounded-full transition-all duration-500 ${
-                  status?.step === "error" ? "bg-red-500" : "bg-blue-500"
-                }`}
-                style={{ width: `${percent}%` }}
-              />
-            </div>
-            <p className="text-xs text-[color:var(--admin-muted)]">{status?.message}</p>
-          </div>
-        )}
-
-        {status?.step === "done" && !isRunning && (
-          <p className="text-xs text-green-600 font-medium">
-            ✓ {status.finishedAt ? new Date(status.finishedAt).toLocaleString("ko-KR") : ""} 완료
-            — 「추천 사이트」 탭에서 결과를 확인하세요.
-          </p>
-        )}
-        {status?.error && <p className="text-xs text-red-500">오류: {status.error}</p>}
-      </div>
-
-      {/* 단계 안내 */}
-      <div className="admin-card p-4">
-        <p className="text-xs font-medium mb-2 text-[color:var(--admin-muted)]">실행 단계</p>
-        <div className="space-y-1">
-          {[
-            { key: "crawl",   label: "크롤링",      desc: "인벤 게시판 본문 + 댓글 수집" },
-            { key: "save",    label: "DB 저장",     desc: "수집 결과를 inven_posts에 저장" },
-            { key: "suggest", label: "사이트 추출", desc: "URL 추출 → 기존/daloa/인벤 제외 → 후보 저장" },
-          ].map((s) => {
-            const order = ["crawl", "save", "suggest"];
-            const idx = order.indexOf(s.key);
-            const done = status?.stepIndex !== undefined && idx < status.stepIndex;
-            const active = status?.step === s.key && isRunning;
-            return (
-              <div key={s.key} className="flex items-start gap-2 text-xs">
-                <span
-                  className={`shrink-0 mt-0.5 w-2 h-2 rounded-full ${
-                    active ? "bg-blue-500" : done ? "bg-green-400" : "bg-gray-200"
-                  }`}
-                />
-                <span>
-                  <span className="font-medium">{s.label}</span>
-                  <span className="text-[color:var(--admin-muted)]"> — {s.desc}</span>
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
     </div>
   );
 }

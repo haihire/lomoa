@@ -40,7 +40,21 @@ export interface SiteClickRow {
   click_count: bigint | number;
 }
 
-type RetentionTable = 'apm_request_timings' | 'monitoring_api_probes';
+type RetentionTable =
+  | 'apm_request_timings'
+  | 'monitoring_api_probes'
+  | 'apm_page_load_timings';
+
+export type PageLoadSource = 'rum' | 'synthetic';
+
+export interface PageLoadSeriesRow {
+  bucket: string;
+  avg_ttfb: number | null;
+  avg_dcl: number | null;
+  avg_lcp: number | null;
+  avg_load: number | null;
+  count: bigint | number;
+}
 
 export type ContainerName = 'nest' | 'nginx' | 'redis' | 'postgres';
 
@@ -146,6 +160,20 @@ export class MonitoringRepository {
         created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `;
+    // 페이지 로딩 속도(RUM: 실사용자 / synthetic: 서버 합성 프로브). 지표는 NULL 허용.
+    await this.prisma.$executeRaw`
+      CREATE TABLE IF NOT EXISTS apm_page_load_timings (
+        id BIGSERIAL PRIMARY KEY,
+        source VARCHAR(16) NOT NULL DEFAULT 'rum',
+        path VARCHAR(255) NOT NULL DEFAULT '/',
+        device_type VARCHAR(16) NOT NULL DEFAULT 'unknown',
+        ttfb_ms INT,
+        dcl_ms INT,
+        lcp_ms INT,
+        load_ms INT,
+        created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
 
     await this.prisma
       .$executeRaw`CREATE INDEX IF NOT EXISTS idx_apm_request_timings_created_at ON apm_request_timings(created_at)`;
@@ -163,6 +191,10 @@ export class MonitoringRepository {
       .$executeRaw`CREATE INDEX IF NOT EXISTS idx_apm_youtube_clicks_created_at ON apm_youtube_clicks(created_at)`;
     await this.prisma
       .$executeRaw`CREATE INDEX IF NOT EXISTS idx_apm_youtube_clicks_video_id ON apm_youtube_clicks(video_id)`;
+    await this.prisma
+      .$executeRaw`CREATE INDEX IF NOT EXISTS idx_apm_page_load_timings_created_at ON apm_page_load_timings(created_at)`;
+    await this.prisma
+      .$executeRaw`CREATE INDEX IF NOT EXISTS idx_apm_page_load_timings_source_created_at ON apm_page_load_timings(source, created_at)`;
 
     for (const container of Object.keys(DOCKER_TABLE) as ContainerName[]) {
       await this.prisma.$executeRawUnsafe(`
@@ -299,6 +331,70 @@ export class MonitoringRepository {
         ${input.isSuccess},
         NOW()
       )
+    `;
+  }
+
+  /** 페이지 로딩 측정값 1건 저장. 지표는 NULL 허용(소스별로 채워지는 지표가 다름). */
+  async recordPageLoad(input: {
+    source: PageLoadSource;
+    path: string;
+    deviceType: string;
+    ttfbMs: number | null;
+    dclMs: number | null;
+    lcpMs: number | null;
+    loadMs: number | null;
+  }) {
+    await this.prisma.$executeRaw`
+      INSERT INTO apm_page_load_timings
+        (source, path, device_type, ttfb_ms, dcl_ms, lcp_ms, load_ms, created_at)
+      VALUES (
+        ${input.source},
+        ${input.path},
+        ${input.deviceType},
+        ${input.ttfbMs},
+        ${input.dclMs},
+        ${input.lcpMs},
+        ${input.loadMs},
+        NOW()
+      )
+    `;
+  }
+
+  /** source별 시간버킷 평균(ttfb/dcl/lcp/load). 빈 버킷도 채워 반환. */
+  async findPageLoadSeries(
+    source: PageLoadSource,
+    rangeDays: number,
+    bucketHours: number,
+  ) {
+    return this.prisma.$queryRaw<PageLoadSeriesRow[]>`
+      WITH samples AS (
+        SELECT
+          TO_TIMESTAMP(FLOOR(EXTRACT(EPOCH FROM created_at) / (${bucketHours} * 3600)) * (${bucketHours} * 3600)) AS bucket_start,
+          ttfb_ms, dcl_ms, lcp_ms, load_ms
+        FROM apm_page_load_timings
+        WHERE source = ${source}
+          AND created_at >= NOW() - (${rangeDays}::int * INTERVAL '1 day')
+      ),
+      buckets AS (
+        SELECT TO_TIMESTAMP(
+                 FLOOR(EXTRACT(EPOCH FROM g) / (${bucketHours} * 3600)) * (${bucketHours} * 3600)
+               ) AS bucket_start
+        FROM generate_series(
+               NOW() - (${rangeDays}::int * INTERVAL '1 day'),
+               NOW(),
+               (${bucketHours} * INTERVAL '1 hour')
+             ) AS g
+      )
+      SELECT TO_CHAR(b.bucket_start, 'MM-DD HH24:MI') AS bucket,
+             ROUND(AVG(s.ttfb_ms))::int AS avg_ttfb,
+             ROUND(AVG(s.dcl_ms))::int  AS avg_dcl,
+             ROUND(AVG(s.lcp_ms))::int  AS avg_lcp,
+             ROUND(AVG(s.load_ms))::int AS avg_load,
+             COUNT(s.ttfb_ms) AS count
+      FROM buckets b
+      LEFT JOIN samples s ON s.bucket_start = b.bucket_start
+      GROUP BY b.bucket_start
+      ORDER BY b.bucket_start ASC
     `;
   }
 
@@ -544,7 +640,36 @@ export class MonitoringRepository {
         return this.deleteRequestTimingRowsOlderThan(retentionDays, chunkSize);
       case 'monitoring_api_probes':
         return this.deleteApiProbeRowsOlderThan(retentionDays, chunkSize);
+      case 'apm_page_load_timings':
+        return this.deleteRowsOlderThan(
+          'apm_page_load_timings',
+          retentionDays,
+          chunkSize,
+        );
     }
+  }
+
+  private async deleteRowsOlderThan(
+    table: 'apm_page_load_timings',
+    retentionDays: number,
+    chunkSize: number,
+  ) {
+    const deleted = await this.prisma.$queryRawUnsafe<Array<{ id: bigint }>>(
+      `
+      DELETE FROM ${table}
+      WHERE id IN (
+        SELECT id
+        FROM ${table}
+        WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')
+        ORDER BY id ASC
+        LIMIT $2
+      )
+      RETURNING id
+      `,
+      retentionDays,
+      chunkSize,
+    );
+    return deleted.length;
   }
 
   private async findDimensionRows(

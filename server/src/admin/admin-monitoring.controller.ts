@@ -60,6 +60,50 @@ export class AdminMonitoringController {
     return this.dockerStats.getContainerHistory(container ?? 'nest');
   }
 
+  @UseGuards(AdminGuard)
+  @Get('admin/monitoring/page-load-series')
+  pageLoadSeries(
+    @Query('source') source?: string,
+    @Query('days') days?: string,
+  ) {
+    const safeSource = source === 'synthetic' ? 'synthetic' : 'rum';
+    const parsed = Number(days);
+    const rangeDays = Number.isFinite(parsed) ? parsed : 7;
+    return this.monitoring.getPageLoadSeries(safeSource, rangeDays);
+  }
+
+  @Post('telemetry/page-load')
+  pageLoad(
+    @Req() req: Request,
+    @Headers('x-telemetry-token') token: string | undefined,
+    @Body()
+    body: {
+      path?: string;
+      deviceType?: string;
+      ttfb?: number;
+      dcl?: number;
+      lcp?: number;
+      load?: number;
+    },
+  ) {
+    this.assertTelemetryAllowed(req, token);
+    const num = (v: unknown): number | null =>
+      typeof v === 'number' && Number.isFinite(v) ? v : null;
+    // load(또는 최소 ttfb)가 없으면 의미 없는 비콘 — 무시
+    if (num(body.load) === null && num(body.ttfb) === null) {
+      return { ok: false };
+    }
+    return this.monitoring.recordPageLoad({
+      path: typeof body.path === 'string' ? body.path : '/',
+      deviceType:
+        typeof body.deviceType === 'string' ? body.deviceType : 'unknown',
+      ttfb: num(body.ttfb),
+      dcl: num(body.dcl),
+      lcp: num(body.lcp),
+      load: num(body.load),
+    });
+  }
+
   @Post('telemetry/page-visit')
   pageVisit(
     @Req() req: Request,

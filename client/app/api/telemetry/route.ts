@@ -62,6 +62,8 @@ export async function POST(req: NextRequest) {
           ? "/api/telemetry/site-click"
           : body?.type === "youtube-click"
             ? "/api/telemetry/youtube-click"
+            : body?.type === "page-load"
+              ? "/api/telemetry/page-load"
         : null;
 
   if (!endpoint) {

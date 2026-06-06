@@ -1,7 +1,10 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import * as http from 'http';
+import * as https from 'https';
 import {
   type DeviceType,
+  type PageLoadSource,
   type VisitRow,
   MonitoringRepository,
 } from './repositories/monitoring.repository';
@@ -117,6 +120,49 @@ export class AdminMonitoringService implements OnModuleInit {
     await this.monitoringRepo.recordYoutubeClick(input);
   }
 
+  /** RUM(실사용자) 페이지 로딩 측정값 기록. 값은 0~600000ms로 클램프, 비정상은 null. */
+  async recordPageLoad(input: {
+    path: string;
+    deviceType: string;
+    ttfb: number | null;
+    dcl: number | null;
+    lcp: number | null;
+    load: number | null;
+  }) {
+    const clamp = (v: number | null): number | null =>
+      typeof v === 'number' && Number.isFinite(v) && v >= 0
+        ? Math.min(600_000, Math.round(v))
+        : null;
+    await this.monitoringRepo.recordPageLoad({
+      source: 'rum',
+      path: input.path.slice(0, 255) || '/',
+      deviceType: input.deviceType.slice(0, 16) || 'unknown',
+      ttfbMs: clamp(input.ttfb),
+      dclMs: clamp(input.dcl),
+      lcpMs: clamp(input.lcp),
+      loadMs: clamp(input.load),
+    });
+  }
+
+  /** source별 페이지 로딩 추이. days에 따라 버킷 크기 자동 선택. */
+  async getPageLoadSeries(source: PageLoadSource, days: number) {
+    const safeDays = Math.max(1, Math.min(30, Math.trunc(days)));
+    const bucketHours = safeDays <= 1 ? 1 : safeDays <= 7 ? 6 : 24;
+    const rows = await this.monitoringRepo.findPageLoadSeries(
+      source,
+      safeDays,
+      bucketHours,
+    );
+    return rows.map((row) => ({
+      bucket: row.bucket,
+      ttfb: row.avg_ttfb ?? null,
+      dcl: row.avg_dcl ?? null,
+      lcp: row.avg_lcp ?? null,
+      load: row.avg_load ?? null,
+      count: Number(row.count),
+    }));
+  }
+
   @Cron('0 */10 * * * *')
   async probeApis() {
     const base =
@@ -153,6 +199,54 @@ export class AdminMonitoringService implements OnModuleInit {
     }
   }
 
+  /** 메인페이지 HTML 문서를 받아 TTFB/문서완료 시간을 합성 측정해 기록(10분). */
+  @Cron('0 */10 * * * *')
+  async probeMainPage() {
+    const url = process.env.MONITORING_MAINPAGE_URL ?? 'https://www.daloa.kr/';
+    try {
+      const { ttfbMs, loadMs } = await this.measureDocument(url);
+      await this.monitoringRepo.recordPageLoad({
+        source: 'synthetic',
+        path: '/',
+        deviceType: 'server',
+        ttfbMs,
+        dclMs: null,
+        lcpMs: null,
+        loadMs,
+      });
+    } catch (err: unknown) {
+      this.logger.warn(`mainpage probe failed: ${toErrorMessage(err)}`);
+    }
+  }
+
+  /** HTML 문서 1건을 받아 TTFB(헤더 수신)·문서 완료 시간을 ms로 측정. */
+  private measureDocument(
+    url: string,
+  ): Promise<{ ttfbMs: number; loadMs: number }> {
+    return new Promise((resolve, reject) => {
+      const client = url.startsWith('https:') ? https : http;
+      const startedAt = process.hrtime.bigint();
+      const elapsed = () =>
+        Math.round(Number(process.hrtime.bigint() - startedAt) / 1_000_000);
+
+      const req = client.get(url, { timeout: 15_000 }, (res) => {
+        const status = res.statusCode ?? 0;
+        // 2xx만 정상 측정 — 3xx/4xx/5xx의 작은 응답이 평균을 왜곡하지 않도록 실패 처리
+        if (status < 200 || status >= 300) {
+          res.resume();
+          req.destroy(new Error(`probe status ${status}`));
+          return;
+        }
+        const ttfbMs = elapsed();
+        res.on('data', () => undefined); // 본문 소비
+        res.on('end', () => resolve({ ttfbMs, loadMs: elapsed() }));
+        res.on('error', reject);
+      });
+      req.on('timeout', () => req.destroy(new Error('probe timeout')));
+      req.on('error', reject);
+    });
+  }
+
   @Cron('0 0 3 * * *')
   async cleanupMetricRetention() {
     try {
@@ -165,9 +259,14 @@ export class AdminMonitoringService implements OnModuleInit {
         'monitoring_api_probes',
         this.MONITORING_METRIC_RETENTION_DAYS,
       );
+      const deletedPageLoads =
+        await this.monitoringRepo.deleteMetricRowsOlderThan(
+          'apm_page_load_timings',
+          this.MONITORING_METRIC_RETENTION_DAYS,
+        );
 
       this.logger.log(
-        `monitoring retention cleanup completed: requests=${deletedRequests}, probes=${deletedProbes}`,
+        `monitoring retention cleanup completed: requests=${deletedRequests}, probes=${deletedProbes}, pageLoads=${deletedPageLoads}`,
       );
     } catch (err: unknown) {
       this.logger.warn(

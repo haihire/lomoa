@@ -352,7 +352,8 @@ export class MonitoringRepository {
              INTERVAL '1 day'
            ) AS d(day)
       LEFT JOIN apm_site_clicks c
-        ON (c.created_at AT TIME ZONE 'Asia/Seoul')::date = d.day
+        ON c.created_at >= d.day AT TIME ZONE 'Asia/Seoul'
+       AND c.created_at < (d.day + INTERVAL '1 day') AT TIME ZONE 'Asia/Seoul'
       GROUP BY d.day
       ORDER BY d.day ASC
     `;
@@ -371,7 +372,8 @@ export class MonitoringRepository {
              INTERVAL '1 day'
            ) AS d(day)
       LEFT JOIN apm_youtube_clicks c
-        ON (c.created_at AT TIME ZONE 'Asia/Seoul')::date = d.day
+        ON c.created_at >= d.day AT TIME ZONE 'Asia/Seoul'
+       AND c.created_at < (d.day + INTERVAL '1 day') AT TIME ZONE 'Asia/Seoul'
       GROUP BY d.day
       ORDER BY d.day ASC
     `;

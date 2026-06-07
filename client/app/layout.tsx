@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Analytics } from "@vercel/analytics/react";
 import GoogleAnalytics from "@/components/GoogleAnalytics";
 import MonitoringBeacon from "@/components/MonitoringBeacon";
 import DarkModeToggleGuard from "@/components/DarkModeToggleGuard";
@@ -73,7 +72,6 @@ export default function RootLayout({
           <DarkModeToggleGuard />
         </div>
         {children}
-        <Analytics />
       </body>
     </html>
   );

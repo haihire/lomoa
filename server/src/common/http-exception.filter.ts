@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import * as Sentry from '@sentry/nestjs';
 import { KakaoService } from '../kakao/kakao.service';
 
 /**
@@ -50,6 +51,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
     this.logger.error(
       `[${request.method}] ${request.url} → ${status} ${errorName}: ${message}`,
     );
+
+    // 예기치 못한 서버 에러(5xx)만 Sentry로 전송 (4xx 클라이언트 에러는 노이즈라 제외)
+    if (status >= 500) {
+      Sentry.captureException(exception);
+    }
 
     // 알림 전송 (401, 404 제외)
     if (!this.SKIP_STATUSES.has(status)) {

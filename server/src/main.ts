@@ -1,3 +1,5 @@
+// ⚠️ Sentry 초기화는 반드시 다른 import보다 먼저 실행돼야 함 (자동 계측 위해)
+import './instrument';
 import { NestFactory } from '@nestjs/core';
 import { json, urlencoded } from 'express';
 import type { NextFunction, Request, Response } from 'express';

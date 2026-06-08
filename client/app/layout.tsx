@@ -17,11 +17,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.daloa.kr"),
-  title: "다로아 - 로아 사이트 모음",
+  title: "다로아 | 로스트아크 사이트 모음",
   description:
     "로스트아크 유용한 사이트 모음, 캐릭터 특성 빌드 분포를 한 번에 확인하세요.",
   openGraph: {
-    title: "다로아 - 로아 사이트 모음",
+    title: "다로아 | 로스트아크 사이트 모음",
     description:
       "로스트아크 유용한 사이트 모음, 캐릭터 특성 빌드 분포를 한 번에 확인하세요.",
     url: "https://www.daloa.kr",
@@ -39,7 +39,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "다로아 - 로아 사이트 모음",
+    title: "다로아 | 로스트아크 사이트 모음",
     description:
       "로스트아크 유용한 사이트 모음, 캐릭터 특성 빌드 분포를 한 번에 확인하세요.",
     images: ["/icon.png"],

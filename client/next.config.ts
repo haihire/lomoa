@@ -19,7 +19,7 @@ export default withSentryConfig(nextConfig, {
 
   org: "private-project-l2",
 
-  project: "daloa-web",
+  project: "lomoa-web",
 
   // Only print logs for uploading source maps in CI
   silent: !process.env.CI,

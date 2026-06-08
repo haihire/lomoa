@@ -19,7 +19,7 @@ PORT=3001
 CLIENT_ORIGIN=http://localhost:3000
 
 # PostgreSQL (Prisma)
-DATABASE_URL=postgresql://user:password@localhost:5432/daloa
+DATABASE_URL=postgresql://user:password@localhost:5432/lomoa
 PRISMA_DB_SCHEMA=public  # 선택, 기본값 public
 
 # 로스트아크 공식 API
@@ -55,13 +55,13 @@ ADMIN_OWNER_PASSWORD=...   # 오너 계정 비밀번호
 ADMIN_DEMO_PASSWORD=...    # 게스트 데모 계정 비밀번호 (선택)
 
 # DB 동기화 (sync 기능)
-SYNC_TARGET_API_URL=https://api.daloa.kr  # 동기화 대상 서버 URL
+SYNC_TARGET_API_URL=https://api.lomoa.kr  # 동기화 대상 서버 URL
 
 # 텔레메트리
 TELEMETRY_INGEST_TOKEN=...  # 클라이언트 SSR에서 전송하는 토큰
 
 # Vercel ISR 캐시 무효화
-NEXT_REVALIDATE_URL=https://www.daloa.kr/api/revalidate
+NEXT_REVALIDATE_URL=https://www.lomoa.kr/api/revalidate
 NEXT_REVALIDATE_SECRET=...
 ```
 

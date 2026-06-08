@@ -202,7 +202,7 @@ export class AdminMonitoringService implements OnModuleInit {
   /** 메인페이지 HTML 문서를 받아 TTFB/문서완료 시간을 합성 측정해 기록(10분). */
   @Cron('0 */10 * * * *')
   async probeMainPage() {
-    const url = process.env.MONITORING_MAINPAGE_URL ?? 'https://www.daloa.kr/';
+    const url = process.env.MONITORING_MAINPAGE_URL ?? 'https://www.lomoa.kr/';
     try {
       const { ttfbMs, loadMs } = await this.measureDocument(url);
       await this.monitoringRepo.recordPageLoad({

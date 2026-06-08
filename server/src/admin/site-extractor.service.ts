@@ -28,7 +28,7 @@ export interface SiteCandidateDraft {
   sample_post_id: string | null;
 }
 
-// 추천에서 항상 제외할 도메인 (인벤 자체, 광고, 대형 플랫폼, daloa, 게임 공식)
+// 추천에서 항상 제외할 도메인 (인벤 자체, 광고, 대형 플랫폼, lomoa/daloa, 게임 공식)
 const EXCLUDE_DOMAINS = new Set([
   'inven.co.kr',
   'upload3.inven.co.kr',

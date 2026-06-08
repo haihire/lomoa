@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 const SYNC_TARGET_API =
   process.env.SYNC_TARGET_API_URL ??
   process.env.NEXT_PUBLIC_SYNC_TARGET_API_URL ??
-  "https://api.daloa.kr";
+  "https://api.lomoa.kr";
 
 export const dynamic = "force-dynamic";
 

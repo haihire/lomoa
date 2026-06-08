@@ -50,7 +50,7 @@ python site-finder/crawl.py --debug             # 파싱 실패 시 raw HTML 저
 ## 사이트 추출 로직 (Nest `SiteExtractorService`)
 
 1. 게시글 본문 + 댓글에서 모든 `http(s)://` URL 추출
-2. **제외**: 인벤 자체(upload/imart 등), daloa, 유튜브/X/네이버 등 대형 플랫폼, 게임 공식
+2. **제외**: 인벤 자체(upload/imart 등), lomoa, 유튜브/X/네이버 등 대형 플랫폼, 게임 공식
 3. **제외**: 이미 `loa_sites`에 등록된 도메인 (루트 도메인까지 비교)
 4. **제외**: `inven_site_blacklist`에 등록된 도메인 (관리자가 거부한 것)
 5. 언급 2회 이상 도메인만 후보로

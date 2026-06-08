@@ -48,6 +48,13 @@ export interface ContainerStatus {
 }
 
 const CONTAINER_LABELS: Record<string, string> = {
+  'lomoa-nest': 'nest',
+  'lomoa-nginx': 'nginx',
+  'lomoa-redis': 'redis',
+  'lomoa-postgres': 'postgres',
+  'local-lomoa-nest': 'nest',
+  'local-lomoa-redis': 'redis',
+  // 전환기 호환: 구 daloa 컨테이너명 (EC2 재배포 후 제거 가능)
   'daloa-nest': 'nest',
   'daloa-nginx': 'nginx',
   'daloa-redis': 'redis',

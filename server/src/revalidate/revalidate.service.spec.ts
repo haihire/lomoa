@@ -30,7 +30,7 @@ describe('RevalidateService', () => {
   });
 
   it('환경변수 설정 시 올바른 URL과 Authorization 헤더로 POST 요청한다', async () => {
-    process.env.NEXT_REVALIDATE_URL = 'https://www.daloa.kr/api/revalidate';
+    process.env.NEXT_REVALIDATE_URL = 'https://www.lomoa.kr/api/revalidate';
     process.env.NEXT_REVALIDATE_SECRET = 'test-secret';
 
     fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
@@ -40,7 +40,7 @@ describe('RevalidateService', () => {
     await service.onApplicationBootstrap();
 
     expect(fetchSpy).toHaveBeenCalledWith(
-      'https://www.daloa.kr/api/revalidate',
+      'https://www.lomoa.kr/api/revalidate',
       {
         method: 'POST',
         headers: { Authorization: 'Bearer test-secret' },
@@ -49,7 +49,7 @@ describe('RevalidateService', () => {
   });
 
   it('서버가 비성공 응답을 반환해도 예외를 던지지 않는다', async () => {
-    process.env.NEXT_REVALIDATE_URL = 'https://www.daloa.kr/api/revalidate';
+    process.env.NEXT_REVALIDATE_URL = 'https://www.lomoa.kr/api/revalidate';
     process.env.NEXT_REVALIDATE_SECRET = 'test-secret';
 
     fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
@@ -61,7 +61,7 @@ describe('RevalidateService', () => {
   });
 
   it('네트워크 오류가 발생해도 예외를 던지지 않는다', async () => {
-    process.env.NEXT_REVALIDATE_URL = 'https://www.daloa.kr/api/revalidate';
+    process.env.NEXT_REVALIDATE_URL = 'https://www.lomoa.kr/api/revalidate';
     process.env.NEXT_REVALIDATE_SECRET = 'test-secret';
 
     fetchSpy = jest

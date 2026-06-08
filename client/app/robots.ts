@@ -2,7 +2,7 @@ import type { MetadataRoute } from "next";
 
 export default function robots(): MetadataRoute.Robots {
   return {
-    host: "https://www.daloa.kr",
+    host: "https://www.lomoa.kr",
     rules: [
       {
         userAgent: "Mediapartners-Google",
@@ -24,6 +24,6 @@ export default function robots(): MetadataRoute.Robots {
         ],
       },
     ],
-    sitemap: "https://www.daloa.kr/sitemap.xml",
+    sitemap: "https://www.lomoa.kr/sitemap.xml",
   };
 }

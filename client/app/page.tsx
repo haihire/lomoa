@@ -76,7 +76,7 @@ export default async function Home() {
           <main className="flex flex-col gap-2">
             <header className="fade-in text-center">
               <h1 className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-xl">
-                다로아 - 로아 사이트 모음
+                로모아 - 로아 사이트 모음
               </h1>
             </header>
 

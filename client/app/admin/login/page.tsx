@@ -44,7 +44,7 @@ export default function AdminLoginPage() {
       <div className="admin-card w-full max-w-sm p-8">
         <div className="mb-6">
           <h1 className="admin-page-title">
-            다로아 <span className="text-blue-600">Admin</span>
+            로모아 <span className="text-blue-600">Admin</span>
           </h1>
           <p className="admin-page-subtitle mt-1">관리자 로그인</p>
         </div>

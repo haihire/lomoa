@@ -39,6 +39,8 @@ const EXCLUDE_DOMAINS = new Set([
   'lostark.inven.co.kr',
   'daloa.kr',
   'www.daloa.kr',
+  'lomoa.kr',
+  'www.lomoa.kr',
   'youtube.com',
   'youtu.be',
   'm.youtube.com',

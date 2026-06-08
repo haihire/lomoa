@@ -4,6 +4,12 @@ import ClassSummaryList from "@/components/class-summary/ClassSummaryList";
 import SiteList from "@/components/sites/SiteList";
 import YoutubeSection from "@/components/youtube/YoutubeSection";
 import type { ClassSummary, Site, StatBuildTab } from "@/types";
+import type { Metadata } from "next";
+
+// 홈 전용 canonical (루트 레이아웃에 두면 하위 페이지가 상속받아 색인 병합 문제 → 페이지별 지정)
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 const API = process.env.NEST_API_URL ?? "http://localhost:3001";
 
@@ -70,7 +76,7 @@ export default async function Home() {
           <main className="flex flex-col gap-2">
             <header className="fade-in text-center">
               <h1 className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 sm:text-xl">
-                로아 사이트 모음
+                다로아 - 로아 사이트 모음
               </h1>
             </header>
 

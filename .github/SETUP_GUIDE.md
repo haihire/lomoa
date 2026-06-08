@@ -146,9 +146,9 @@ GitHub 웹에서:
 - name: Deploy to Cloud Run
   uses: google-github-actions/deploy-cloudrun@v1
   with:
-    service: daloa-api
+    service: lomoa-api
     region: asia-northeast1
-    image: gcr.io/${{ secrets.GCP_PROJECT }}/daloa:${{ github.sha }}
+    image: gcr.io/${{ secrets.GCP_PROJECT }}/lomoa:${{ github.sha }}
 ```
 
 필요한 환경변수/시크릿은 Repository Settings > Secrets and variables > Actions 에서 추가하세요.

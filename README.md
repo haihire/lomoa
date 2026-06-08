@@ -1,4 +1,4 @@
-# Daloa - 로스트아크 커뮤니티 플랫폼
+# Lomoa - 로스트아크 커뮤니티 플랫폼
 
 ## 프로젝트 목표
 
@@ -29,11 +29,11 @@
 
 ## 시스템 흐름:
 
-<a href="https://raw.githubusercontent.com/haihire/daloa/main/docs/architecture.svg" target="_blank" rel="noopener">
+<a href="https://raw.githubusercontent.com/haihire/lomoa/main/docs/architecture.svg" target="_blank" rel="noopener">
   <img src="docs/architecture.svg" alt="아키텍처 다이어그램" width="100%" />
 </a>
 
-원본 크기로 보기: [docs/architecture.svg](https://raw.githubusercontent.com/haihire/daloa/main/docs/architecture.svg)
+원본 크기로 보기: [docs/architecture.svg](https://raw.githubusercontent.com/haihire/lomoa/main/docs/architecture.svg)
 
 ## 브랜치 보호 목록
 

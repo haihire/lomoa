@@ -23,7 +23,7 @@ async function bootstrap() {
   // Next.js SSR 서버(localhost:3000)에서의 요청 허용
   const rawOrigin = process.env.CLIENT_ORIGIN ?? 'http://localhost:3000';
   const allowedOrigins = rawOrigin.split(',').map((o) => o.trim());
-  // www 서브도메인 자동 추가 (예: https://daloa.kr → https://www.daloa.kr 도 허용)
+  // www 서브도메인 자동 추가 (예: https://lomoa.kr → https://www.lomoa.kr 도 허용)
   const wwwVariants = allowedOrigins
     .filter((o) => !o.includes('://www.'))
     .map((o) => o.replace('://', '://www.'));

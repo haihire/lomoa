@@ -40,7 +40,7 @@ function mockExecError(message: string) {
 
 function dockerLine(overrides: Record<string, string> = {}): string {
   return JSON.stringify({
-    Name: 'daloa-nest',
+    Name: 'lomoa-nest',
     CPUPerc: '5.00%',
     MemUsage: '100MiB / 1GiB',
     MemPerc: '10.00%',
@@ -61,7 +61,7 @@ describe('DockerStatsService', () => {
 
       expect(stats).toHaveLength(1);
       expect(stats[0]).toMatchObject({
-        name: 'daloa-nest',
+        name: 'lomoa-nest',
         label: 'nest',
         cpuPercent: 5,
         memPercent: 10,
@@ -76,7 +76,7 @@ describe('DockerStatsService', () => {
       const { service } = createService();
       mockExecSuccess(
         [
-          dockerLine({ Name: 'daloa-nest' }),
+          dockerLine({ Name: 'lomoa-nest' }),
           dockerLine({ Name: 'unknown-container' }),
         ].join('\n'),
       );
@@ -84,12 +84,12 @@ describe('DockerStatsService', () => {
       const stats = await service.getContainerStats();
 
       expect(stats).toHaveLength(1);
-      expect(stats[0].name).toBe('daloa-nest');
+      expect(stats[0].name).toBe('lomoa-nest');
     });
 
-    it('recognises local-daloa-* container names', async () => {
+    it('recognises local-lomoa-* container names', async () => {
       const { service } = createService();
-      mockExecSuccess(dockerLine({ Name: 'local-daloa-nest' }));
+      mockExecSuccess(dockerLine({ Name: 'local-lomoa-nest' }));
 
       const stats = await service.getContainerStats();
 
@@ -183,7 +183,7 @@ describe('DockerStatsService', () => {
   describe('getContainerStatuses', () => {
     function psLine(overrides: Record<string, string> = {}): string {
       return JSON.stringify({
-        Names: 'daloa-nest',
+        Names: 'lomoa-nest',
         State: 'running',
         Status: 'Up 3 hours (healthy)',
         ...overrides,
@@ -198,7 +198,7 @@ describe('DockerStatsService', () => {
 
       expect(statuses).toHaveLength(1);
       expect(statuses[0]).toMatchObject({
-        name: 'daloa-nest',
+        name: 'lomoa-nest',
         label: 'nest',
         state: 'running',
         status: 'Up 3 hours (healthy)',
@@ -210,7 +210,7 @@ describe('DockerStatsService', () => {
       const { service } = createService();
       mockExecSuccess(
         psLine({
-          Names: 'daloa-redis',
+          Names: 'lomoa-redis',
           State: 'exited',
           Status: 'Exited (0) 5 minutes ago',
         }),
@@ -250,9 +250,9 @@ describe('DockerStatsService', () => {
       const { service, saveDockerMetric } = createService();
       mockExecSuccess(
         [
-          dockerLine({ Name: 'daloa-nest' }),
+          dockerLine({ Name: 'lomoa-nest' }),
           dockerLine({
-            Name: 'daloa-redis',
+            Name: 'lomoa-redis',
             CPUPerc: '1.00%',
             MemUsage: '50MiB / 500MiB',
             MemPerc: '10.00%',

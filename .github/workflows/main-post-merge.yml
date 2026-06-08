@@ -72,15 +72,15 @@ jobs:
           cd /home/ubuntu/daloa
           git reset --hard HEAD
           git pull origin main
-          grep -q '^NEXT_REVALIDATE_URL=' .env || echo 'NEXT_REVALIDATE_URL=https://www.daloa.kr/api/revalidate' >> .env
+          grep -q '^NEXT_REVALIDATE_URL=' .env || echo 'NEXT_REVALIDATE_URL=https://www.lomoa.kr/api/revalidate' >> .env
           sed -i '/^NEXT_REVALIDATE_SECRET=/d' .env
           echo 'NEXT_REVALIDATE_SECRET=${NEXT_REVALIDATE_SECRET}' >> .env
           sed -i '/^NEST_IMAGE=/d' .env
           echo 'NEST_IMAGE=${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}' >> .env
           echo '${ECR_PASSWORD}' | docker login --username AWS --password-stdin ${ECR_REGISTRY}
           docker pull ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
-          docker compose up -d
-          docker restart daloa-nginx
+          docker compose --profile production up -d
+          docker restart lomoa-nginx
           docker images '${ECR_REGISTRY}/${ECR_REPOSITORY}' --format '{{.Tag}} {{.ID}}' | grep -v '${IMAGE_TAG}' | awk '{print \$2}' | xargs -r docker rmi -f || true
           docker image prune -f"
 

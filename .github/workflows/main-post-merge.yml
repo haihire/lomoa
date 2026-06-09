@@ -69,7 +69,7 @@ jobs:
           ECR_PASSWORD=$(aws ecr get-login-password --region ${AWS_REGION})
 
           remote_script="set -e
-          cd /home/ubuntu/daloa
+          cd /home/ubuntu/lomoa
           git reset --hard HEAD
           git pull origin main
           grep -q '^NEXT_REVALIDATE_URL=' .env || echo 'NEXT_REVALIDATE_URL=https://www.lomoa.kr/api/revalidate' >> .env

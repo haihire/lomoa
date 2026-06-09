@@ -34,7 +34,7 @@ jobs:
             --document-name "AWS-RunShellScript" \
             --instance-ids "$EC2_INSTANCE_ID" \
             --comment "diag-nest" \
-            --parameters "commands=[\"sudo -u ubuntu -H bash -lc 'cd /home/ubuntu/daloa && echo === CONTAINER STATUS === && docker compose ps && echo === NEST LOGS === && docker compose logs --tail=$TAIL nest'\"]" \
+            --parameters "commands=[\"sudo -u ubuntu -H bash -lc 'cd /home/ubuntu/lomoa && echo === CONTAINER STATUS === && docker compose ps && echo === NEST LOGS === && docker compose logs --tail=$TAIL nest'\"]" \
             --query 'Command.CommandId' \
             --output text)
 

@@ -54,9 +54,6 @@ KAKAO_REFRESH_TOKEN=...
 ADMIN_OWNER_PASSWORD=...   # 오너 계정 비밀번호
 ADMIN_DEMO_PASSWORD=...    # 게스트 데모 계정 비밀번호 (선택)
 
-# DB 동기화 (sync 기능)
-SYNC_TARGET_API_URL=https://api.lomoa.kr  # 동기화 대상 서버 URL
-
 # 텔레메트리
 TELEMETRY_INGEST_TOKEN=...  # 클라이언트 SSR에서 전송하는 토큰
 
@@ -86,12 +83,10 @@ server/src/
 │   ├── admin-monitoring.controller.ts # 모니터링 대시보드 + 텔레메트리 수집
 │   ├── admin-monitoring.service.ts
 │   ├── admin-sites.controller.ts     # 사이트 CRUD
-│   ├── admin-sync.controller.ts      # DB 동기화 (SSE 스트림)
 │   ├── admin.guard.ts                # AdminGuard, AdminWriteGuard
 │   └── repositories/
 │       ├── admin-auth.repository.ts
 │       ├── admin-characters.repository.ts
-│       ├── admin-sync.repository.ts
 │       └── monitoring.repository.ts
 │
 ├── lostark/              # 로스트아크 API 래퍼 + Rate Limiter
@@ -122,7 +117,6 @@ server/src/
 | GET    | `/api/users/stats`            | 저장된 유저/원정대 통계                        |
 | POST   | `/api/admin/auth/login`       | 관리자 로그인                                  |
 | POST   | `/api/admin/auth/logout`      | 관리자 로그아웃                                |
-| GET    | `/api/admin/sync/:table`      | DB 동기화 (SSE 스트림)                         |
 | GET    | `/api/admin/monitoring/dashboard` | 모니터링 대시보드                         |
 
 ---
@@ -151,9 +145,3 @@ server/src/
 
 - 매일 09:00 각 사이트 HTTP 상태·타이틀 점검
 - 변경 감지 시 카카오톡 메시지 발송
-
-### DB 동기화 (`admin-sync.controller.ts`)
-
-- SSE(Server-Sent Events)로 진행상황 실시간 스트림
-- `local → production` / `production → local` 양방향 지원
-- `loa_users` 동기화 전 FK 의존 테이블(`loa_class`, `loa_ark_grid`) 선처리

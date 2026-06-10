@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 const NEST_API = process.env.NEST_API_URL ?? "http://localhost:3001";
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   try {
     const store = await cookies();
     const token = store.get("admin_token")?.value ?? "";

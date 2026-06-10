@@ -477,6 +477,10 @@ export default function YoutubeList({
                           <img
                             src={v.thumbnailUrl}
                             alt=""
+                            // 첫 썸네일(LCP 후보)은 우선 로드, 보이는 2개만 eager·나머지는 lazy
+                            // → LCP 단축 + 초기 이미지 대역폭 절감(8장 → 보이는 만큼만)
+                            loading={idx < 2 ? "eager" : "lazy"}
+                            fetchPriority={idx === 0 ? "high" : undefined}
                             className="h-28 w-full rounded-lg object-cover"
                           />
                           <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1 py-0.5 text-[10px] font-bold text-white leading-none">

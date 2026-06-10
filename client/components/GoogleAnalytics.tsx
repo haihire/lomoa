@@ -6,12 +6,14 @@ export default function GoogleAnalytics() {
 
   return (
     <>
-      {/* lazyOnload: 브라우저 idle 때 로드 → gtag 메인스레드 작업을 초기 로드 창 밖으로 */}
+      {/* 무거운 gtag 라이브러리는 lazyOnload로 idle까지 미뤄 메인스레드 부담 감소 */}
       <Script
         src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`}
         strategy="lazyOnload"
       />
-      <Script id="ga4-init" strategy="lazyOnload">
+      {/* 초기화는 afterInteractive 유지: window.gtag/dataLayer를 일찍 정의해
+          로드 직후(=idle 이전) 클릭 이벤트도 큐잉되어 유실 방지. 실행 비용은 매우 작음. */}
+      <Script id="ga4-init" strategy="afterInteractive">
         {`
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}

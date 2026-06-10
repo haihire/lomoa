@@ -217,7 +217,7 @@ model youtube_view_snapshots {
   title         String   @default("")
   channel_title String   @default("")
   thumbnail_url String   @default("")
-  published_at  DateTime @db.Date
+  published_at  DateTime @db.Timestamptz(6)
   duration      String   @default("")
   view_count    BigInt   @default(0)
   recorded_date DateTime @db.Date

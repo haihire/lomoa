@@ -12,12 +12,12 @@ const POPULAR_CACHE_KEY = 'youtube:popular:first';
 const CACHE_TTL = 4 * 60 * 60; // 4시간 (Cron 3시간 갱신 + 여유)
 const QUOTA_KEY = 'youtube:quota_exceeded';
 const LOCK_VIDEOS_KEY = 'youtube:lock:videos';
-const LOCK_POPULAR_KEY = 'youtube:lock:popular';
 const LOCK_TTL = 60; // 락 최대 60초 유지
 const MAX_RESULTS = 20;
 const POPULAR_MAX_RESULTS = 50;
 const POPULAR_MAX_LIMIT = 50;
 const POPULAR_MAX_PAGES = 8;
+const POPULAR_WINDOW_DAYS = 7; // 인기 영상 노출 창(게시일 기준 최근 7일)
 
 export interface PopularResponse {
   items: YoutubeVideoItem[];
@@ -270,15 +270,17 @@ export class StreamersService implements OnModuleInit {
         (a, b) =>
           new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
       );
-      await this.youtubeRedis.set(
-        POPULAR_CACHE_KEY,
-        JSON.stringify({ items: uniqueItems }),
-        'EX',
-        CACHE_TTL,
-      );
-      this.logger.log(`YouTube 인기 영상 ${uniqueItems.length}건 캐시 저장`);
-      // 조회수 스냅샷 저장
+      // 1) 새로 가져온 영상을 DB에 누적 저장(메타데이터 + 조회수 스냅샷)
       await this.snapshotViewCounts(uniqueItems);
+      // 2) 서빙 캐시는 DB의 최근 7일 누적분으로 재구성한다.
+      //    YouTube 검색이 도달하지 못해 이번에 안 잡힌 영상도 게시일이
+      //    7일 이내면 DB에 남아 있어 계속 노출된다(= 누적 서빙).
+      const recent =
+        await this.streamersRepo.findRecentVideos(POPULAR_WINDOW_DAYS);
+      await this.cachePopular(recent);
+      this.logger.log(
+        `YouTube 인기 영상 ${recent.length}건 캐시 저장 (DB 누적 ${POPULAR_WINDOW_DAYS}일)`,
+      );
     } catch (err: unknown) {
       const apiErr = toYoutubeApiError(err);
       const status = apiErr.response?.status;
@@ -403,12 +405,16 @@ export class StreamersService implements OnModuleInit {
 
   /**
    * GET /api/streamers/popular
-   * offset/limit 미지정 시 전체 목록, 지정 시 캐시된 목록을 분할 반환
+   * 게시일 기준 최근 7일 영상을 DB 누적분에서 서빙한다.
+   * Redis 캐시는 DB 조회 결과를 담는 읽기 캐시일 뿐이며, YouTube API는
+   * 호출하지 않는다(갱신은 refresh() 크론이 전담).
+   * offset/limit 미지정 시 전체 목록, 지정 시 분할 반환.
    */
   async searchPopularVideos(offset = 0, limit = 0): Promise<PopularResponse> {
     const safeOffset = Math.max(0, offset);
     const safeLimit = Math.min(Math.max(0, limit), POPULAR_MAX_LIMIT);
 
+    // 1. Redis 읽기 캐시 (DB 누적분을 캐싱한 결과)
     try {
       const cached = await this.youtubeRedis.get(POPULAR_CACHE_KEY);
       if (cached) {
@@ -421,66 +427,27 @@ export class StreamersService implements OnModuleInit {
       );
     }
 
-    if (this.youtubeRedisReadOnly) {
-      this.logger.log(
-        'YOUTUBE_REDIS_READONLY 활성화 — 인기 영상 캐시 미스 시 빈 결과 반환',
-      );
-      return { items: [], nextOffset: null, hasMore: false, total: 0 };
-    }
-
-    if (this.quotaApisDisabled) {
-      this.logger.log(
-        'LOCAL_DISABLE_QUOTA_APIS 활성화 — 인기 영상 API 호출 없이 빈 결과 반환',
-      );
-      return { items: [], nextOffset: null, hasMore: false, total: 0 };
-    }
-
+    // 2. 캐시 미스 → DB에서 최근 7일 누적분 조회 후 캐싱
+    let items: YoutubeVideoItem[];
     try {
-      const blocked = await this.youtubeRedis.get(QUOTA_KEY);
-      if (blocked) {
-        return { items: [], nextOffset: null, hasMore: false, total: 0 };
-      }
-    } catch (error: unknown) {
-      this.logger.debug(
-        `할당량 플래그 조회 실패(무시): ${toErrorMessage(error)}`,
-      );
-    }
-
-    // 분산 락 — 동시 요청 중 첫 번째만 API 호출 (Thundering Herd 방지)
-    const popularLock = await this.youtubeRedis
-      .set(LOCK_POPULAR_KEY, '1', 'EX', LOCK_TTL, 'NX')
-      .catch(() => null);
-    if (!popularLock) {
-      this.logger.debug('YouTube popular 락 대기 중 — 빈 결과 반환');
-      return { items: [], nextOffset: null, hasMore: false, total: 0 };
-    }
-
-    let popular: { items: YoutubeVideoItem[] };
-    try {
-      const allItems: YoutubeVideoItem[] = [];
-      let pageToken: string | undefined;
-      for (let page = 0; page < POPULAR_MAX_PAGES; page++) {
-        const result = await this.fetchFromYouTube(pageToken, 'date', true);
-        allItems.push(...result.items);
-        if (!result.nextPageToken) break;
-        pageToken = result.nextPageToken;
-      }
-      const uniqueItems = dedupByVideoId(allItems);
-      uniqueItems.sort(
-        (a, b) =>
-          new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
-      );
-      popular = { items: uniqueItems };
+      items = await this.streamersRepo.findRecentVideos(POPULAR_WINDOW_DAYS);
     } catch (err: unknown) {
-      this.logger.error(`searchPopularVideos 실패: ${toErrorMessage(err)}`);
-      await this.youtubeRedis.del(LOCK_POPULAR_KEY).catch(() => {});
+      this.logger.error(`popular DB 조회 실패: ${toErrorMessage(err)}`);
       return { items: [], nextOffset: null, hasMore: false, total: 0 };
     }
 
+    await this.cachePopular(items);
+    return this.slicePopular(items, safeOffset, safeLimit);
+  }
+
+  /** DB의 최근 7일 영상 목록을 popular 읽기 캐시에 저장 */
+  private async cachePopular(items: YoutubeVideoItem[]): Promise<void> {
+    // 로컬 dev가 공유 EC2 Redis를 읽기 전용으로 붙는 경우 쓰기 금지
+    if (this.youtubeRedisReadOnly) return;
     try {
       await this.youtubeRedis.set(
         POPULAR_CACHE_KEY,
-        JSON.stringify(popular),
+        JSON.stringify({ items }),
         'EX',
         CACHE_TTL,
       );
@@ -488,11 +455,7 @@ export class StreamersService implements OnModuleInit {
       this.logger.debug(
         `popular 캐시 저장 실패(무시): ${toErrorMessage(error)}`,
       );
-    } finally {
-      await this.youtubeRedis.del(LOCK_POPULAR_KEY).catch(() => {});
     }
-
-    return this.slicePopular(popular.items, safeOffset, safeLimit);
   }
 
   private slicePopular(

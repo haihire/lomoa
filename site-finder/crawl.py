@@ -26,8 +26,7 @@ date_str 형식:
 사용법:
   python crawl.py                    # 어제 게시물 → stdout JSON
   python crawl.py --date 2026-05-20  # 특정 날짜
-  python crawl.py --save-file        # output/ 에도 저장 (디버그)
-  python crawl.py --debug            # 파싱 실패 시 raw HTML 저장
+  python crawl.py --debug            # 상세 로그 출력 (stderr)
 """
 
 import asyncio
@@ -36,7 +35,6 @@ import logging
 import re
 import sys
 from datetime import date, timedelta
-from pathlib import Path
 
 from bs4 import BeautifulSoup
 from curl_cffi.requests import AsyncSession
@@ -66,10 +64,6 @@ BOARDS = {
     "tip":  {"id": 4821, "name": "팁과노하우"},
 }
 BASE = "https://www.inven.co.kr/board/lostark"
-
-OUTPUT_DIR = Path(__file__).parent / "output"
-if "--save-file" in sys.argv or DEBUG:
-    OUTPUT_DIR.mkdir(exist_ok=True)
 
 UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -162,7 +156,7 @@ def parse_list_page(html: str, board_key: str) -> tuple[list[dict], bool]:
     board_id = BOARDS[board_key]["id"]
     anchors = soup.select("a.subject-link")
     if not anchors:
-        log.warning("subject-link 0개 — 구조 변경 가능. --debug 로 HTML 확인")
+        log.warning("subject-link 0개 — 구조(셀렉터) 변경 가능성")
 
     seen: set[str] = set()
     posts: list[dict] = []
@@ -305,11 +299,6 @@ async def crawl_board(session: AsyncSession, board_key: str) -> list[dict]:
             log.error(f"페이지 fetch 실패: {e}")
             break
 
-        if DEBUG:
-            (OUTPUT_DIR / f"debug_{board_key}_p{page}.html").write_text(
-                html, encoding="utf-8"
-            )
-
         posts, should_stop = parse_list_page(html, board_key)
         for p in posts:
             collected[p["post_id"]] = p
@@ -335,10 +324,6 @@ async def crawl_contents(session: AsyncSession, posts: list[dict]) -> None:
         try:
             log.info(f"  [{i+1}/{len(targets)}] {post['title'][:40]}")
             html = await fetch(session, post["url"])
-            if DEBUG and i == 0:
-                (OUTPUT_DIR / f"debug_post_{post['board']}.html").write_text(
-                    html, encoding="utf-8"
-                )
             post["content"] = parse_post_content(html)
             post["comments"] = await fetch_comments(session, board_id, post["post_id"])
             await asyncio.sleep(0.4)
@@ -355,7 +340,6 @@ async def main():
     """
     두 게시판을 크롤링하고 결과를 stdout에 JSON으로 출력한다 (DB 미접근).
     Nest가 stdout JSON을 받아 Prisma로 저장한다.
-    --save-file 플래그가 있으면 디버그용으로 output/ 에도 저장한다.
     """
     log.info(f"=== 인벤 크롤러 | target={TARGET_DATE} pages<={MAX_PAGES} debug={DEBUG} ===")
 
@@ -372,13 +356,6 @@ async def main():
     log.info(f"=== DONE target={TARGET_DATE} total={len(all_posts)} content={ok} {by_board} ===")
 
     payload = {"target_date": TARGET_DATE.isoformat(), "posts": all_posts}
-
-    if "--save-file" in sys.argv:
-        out_path = OUTPUT_DIR / f"inven_{TARGET_DATE.isoformat()}.json"
-        out_path.write_text(
-            json.dumps(all_posts, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        log.info(f"saved: {out_path}")
 
     # 결과 JSON을 stdout으로 출력 (Nest가 파싱). 로그는 stderr로 나가므로 섞이지 않음.
     sys.stdout.write(json.dumps(payload, ensure_ascii=False))

@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { after } from "next/server";
 import StatBuildList from "@/components/characters/StatBuildList";
 import ClassSummaryList from "@/components/class-summary/ClassSummaryList";
 import SiteList from "@/components/sites/SiteList";
@@ -10,6 +11,11 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   alternates: { canonical: "/" },
 };
+
+// 홈을 정적 ISR로 서빙 → 서울 엣지 CDN에서 캐시된 HTML 제공(TTFB 대폭 단축).
+// 5분마다 백그라운드 재검증. 이 시점에만 아래 섹션 fetch/텔레메트리가 실행됨.
+// (내부 stat-builds fetch가 revalidate:300 → 라우트 재검증 주기는 그 최솟값인 300초로 수렴)
+export const revalidate = 300;
 
 const API = process.env.NEST_API_URL ?? "http://localhost:3001";
 
@@ -40,12 +46,9 @@ async function timedFetch<T>(label: string, url: string, revalidate: number) {
     .then<T>((r) => r.json())
     .catch(() => [] as T);
   const durationMs = Date.now() - started;
-  void recordServerTiming({
-    name: label,
-    path: url,
-    durationMs,
-  });
-  return { data, durationMs };
+  // 텔레메트리는 호출처에서 after()로 모아 보냄(렌더 경로 밖). 여기서 직접 보내면
+  // no-store fetch가 렌더 중 실행돼 라우트가 dynamic으로 떨어지고 정적 ISR이 깨진다.
+  return { data, durationMs, name: label, path: url };
 }
 
 export default async function Home() {
@@ -62,6 +65,20 @@ export default async function Home() {
       3600,
     ),
   ]);
+
+  // 응답 종료 후 섹션별 서버 타이밍을 비동기로 기록(렌더/캐싱에 영향 없음).
+  // 정적 ISR이므로 재검증 렌더 시점(5분당 1회)에만 실행된다.
+  after(async () => {
+    await Promise.all(
+      [sitesRes, statRes, summaryRes].map((res) =>
+        recordServerTiming({
+          name: res.name,
+          path: res.path,
+          durationMs: res.durationMs,
+        }),
+      ),
+    );
+  });
 
   const sites = sitesRes.data;
   const statBuilds = statRes.data;

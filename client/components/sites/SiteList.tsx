@@ -12,6 +12,16 @@ const STORAGE_KEY = "loa_favorites";
 const FAVORITES_EVENT = "loa_favorites_changed";
 const EMPTY_FAVORITES: string[] = [];
 
+// 사이트 주소(도메인)만으로 구글 파비콘 서비스에서 작은 아이콘(32px, ~1-3KB, 7일 캐시)을 받음.
+// site.icon에 박힌 원본 대용량 파비콘(예: 256x256)을 16x16로 내려받던 낭비 제거.
+function faviconUrl(href: string): string | null {
+  try {
+    return `https://www.google.com/s2/favicons?domain=${new URL(href).hostname}&sz=32`;
+  } catch {
+    return null;
+  }
+}
+
 let cachedRawFavorites: string | null = null;
 let cachedParsedFavorites: string[] = EMPTY_FAVORITES;
 
@@ -125,6 +135,7 @@ export default function SiteList({ sites }: Props) {
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {sorted.map((site) => {
             const isFav = favSet.has(site.href);
+            const favicon = faviconUrl(site.href); // 사이트당 1회만 파싱
             const trackSiteClick = () => {
               const payload = {
                 type: "site-click",
@@ -204,29 +215,19 @@ export default function SiteList({ sites }: Props) {
 
                   <div className="flex items-start justify-between gap-2 pr-5">
                     <div className="flex min-w-0 items-center gap-1.5">
-                      {site.icon && (
+                      {favicon && (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={site.icon}
+                          src={favicon}
                           alt=""
                           width={16}
                           height={16}
+                          loading="lazy"
+                          decoding="async"
                           className="shrink-0 rounded-sm"
                           onError={(e) => {
-                            const img = e.target as HTMLImageElement;
-                            const domain = (() => {
-                              try {
-                                return new URL(site.href).hostname;
-                              } catch {
-                                return "";
-                              }
-                            })();
-                            const fallback = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
-                            if (img.src !== fallback && domain) {
-                              img.src = fallback;
-                            } else {
-                              img.style.display = "none";
-                            }
+                            // 구글 파비콘도 못 찾으면 아이콘 숨김
+                            (e.target as HTMLImageElement).style.display = "none";
                           }}
                         />
                       )}

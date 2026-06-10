@@ -477,6 +477,10 @@ export default function YoutubeList({
                           <img
                             src={v.thumbnailUrl}
                             alt=""
+                            // 첫 썸네일(LCP 후보)은 우선 로드. 데스크톱(sm:w-52)에서 한 번에
+                            // 보이는 ~4개까지 eager(pop-in 방지), 화면 밖은 lazy로 대역폭 절감.
+                            loading={idx < 4 ? "eager" : "lazy"}
+                            fetchPriority={idx === 0 ? "high" : undefined}
                             className="h-28 w-full rounded-lg object-cover"
                           />
                           <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1 py-0.5 text-[10px] font-bold text-white leading-none">

@@ -4,7 +4,6 @@ import { AdminAuthController } from './admin-auth.controller';
 import { AdminSitesController } from './admin-sites.controller';
 import { AdminCacheController } from './admin-cache.controller';
 import { AdminCharactersController } from './admin-characters.controller';
-import { AdminSyncController } from './admin-sync.controller';
 import { AdminGuard, AdminWriteGuard } from './admin.guard';
 import { SitesModule } from '../sites/sites.module';
 import { AdminMonitoringController } from './admin-monitoring.controller';
@@ -13,7 +12,6 @@ import { DockerStatsService } from './docker-stats.service';
 import { MonitoringRepository } from './repositories/monitoring.repository';
 import { AdminAuthRepository } from './repositories/admin-auth.repository';
 import { AdminCharactersRepository } from './repositories/admin-characters.repository';
-import { AdminSyncRepository } from './repositories/admin-sync.repository';
 import { AdminInvenController } from './admin-inven.controller';
 import { AdminInvenRepository } from './repositories/admin-inven.repository';
 import { AdminInvenCronService } from './admin-inven-cron.service';
@@ -28,7 +26,6 @@ import { SiteSuggestService } from './site-suggest.service';
     AdminSitesController,
     AdminCacheController,
     AdminCharactersController,
-    AdminSyncController,
     AdminMonitoringController,
     AdminInvenController,
   ],
@@ -41,7 +38,6 @@ import { SiteSuggestService } from './site-suggest.service';
     MonitoringRepository,
     AdminAuthRepository,
     AdminCharactersRepository,
-    AdminSyncRepository,
     AdminInvenRepository,
     AdminInvenCronService,
     AdminInvenPipelineService,

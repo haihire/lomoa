@@ -4,7 +4,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import OpenAI from 'openai';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import * as dns from 'dns/promises';
@@ -29,23 +29,32 @@ interface SiteMeta {
 }
 
 /**
- * 추천 후보(사이트)에 대해 Gemini로 name/category/description/icon을 생성한다.
+ * 추천 후보(사이트)에 대해 NVIDIA NIM(OpenAI 호환)으로
+ * name/category/description/icon을 생성한다.
  * 자동 실행 없음 — 관리자가 모달에서 버튼을 누를 때만 호출되므로 토큰은 그때만 소모된다.
- * (GEMINI_API_KEY가 없으면 비활성.)
+ * (NVIDIA_API_KEY가 없으면 비활성.)
  */
 @Injectable()
 export class SiteSuggestService {
   private readonly logger = new Logger(SiteSuggestService.name);
-  private readonly genAI: GoogleGenerativeAI | null;
+  private readonly client: OpenAI | null;
+  private readonly model: string;
   // DNS rebinding 방어: 연결 직전(Time-of-Use) IP를 재검증하는 커스텀 에이전트
   private readonly httpAgent: http.Agent;
   private readonly httpsAgent: https.Agent;
 
   constructor(private readonly config: ConfigService) {
-    const apiKey = this.config.get<string>('GEMINI_API_KEY');
-    this.genAI = apiKey ? new GoogleGenerativeAI(apiKey) : null;
+    const apiKey = this.config.get<string>('NVIDIA_API_KEY');
+    const baseURL =
+      this.config.get<string>('NVIDIA_BASE_URL') ||
+      'https://integrate.api.nvidia.com/v1';
+    // 모델은 .env(NVIDIA_MODEL)로 교체 가능 — 코드 수정 없이 바꾸기 위함
+    this.model =
+      this.config.get<string>('NVIDIA_MODEL') ||
+      'qwen/qwen3-next-80b-a3b-instruct';
+    this.client = apiKey ? new OpenAI({ apiKey, baseURL }) : null;
     if (!apiKey) {
-      this.logger.warn('GEMINI_API_KEY 미설정 — 사이트 AI 추천 비활성화');
+      this.logger.warn('NVIDIA_API_KEY 미설정 — 사이트 AI 추천 비활성화');
     }
 
     // axios가 실제로 연결할 IP를 lookup 단계에서 검사 → isSafeUrl 선검증과
@@ -74,7 +83,7 @@ export class SiteSuggestService {
     });
   }
 
-  /** og:image 또는 파비콘 URL만 반환한다 (Gemini 호출 없음). */
+  /** og:image 또는 파비콘 URL만 반환한다 (AI 호출 없음). */
   async fetchIcon(input: { url: string; domain: string }): Promise<string> {
     const meta = await this.fetchMeta(input.url);
     return (
@@ -83,40 +92,18 @@ export class SiteSuggestService {
     );
   }
 
-  /** 사이트 메타를 fetch해 Gemini로 추천 필드를 생성한다. */
+  /** 사이트 메타를 fetch해 NVIDIA NIM으로 추천 필드를 생성한다. */
   async suggest(input: {
     url: string;
     domain: string;
   }): Promise<SiteSuggestion> {
-    if (!this.genAI) {
+    if (!this.client) {
       throw new ServiceUnavailableException(
-        'GEMINI_API_KEY가 설정되지 않았습니다',
+        'NVIDIA_API_KEY가 설정되지 않았습니다',
       );
     }
 
     const meta = await this.fetchMeta(input.url);
-
-    const model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: {
-        responseMimeType: 'application/json',
-        // 키·타입을 강제하고 category는 enum으로 제한 → 파싱 오류·잘못된 카테고리 차단
-        responseSchema: {
-          type: SchemaType.OBJECT,
-          properties: {
-            name: { type: SchemaType.STRING },
-            category: {
-              type: SchemaType.STRING,
-              format: 'enum',
-              enum: CATEGORIES,
-            },
-            description: { type: SchemaType.STRING },
-            icon: { type: SchemaType.STRING },
-          },
-          required: ['name', 'category', 'description', 'icon'],
-        },
-      },
-    });
 
     const prompt = [
       '너는 로스트아크(게임) 관련 웹사이트를 분류하는 도우미야.',
@@ -138,15 +125,31 @@ export class SiteSuggestService {
 
     let raw: string;
     try {
-      const result = await model.generateContent(prompt);
-      raw = result.response.text();
+      // response_format=json_object → 모델이 JSON만 출력 (프롬프트에 "JSON" 명시 필요)
+      const completion = await this.client.chat.completions.create({
+        model: this.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
+      });
+      raw = completion.choices[0]?.message?.content ?? '';
     } catch (e) {
       const msg = e instanceof Error ? e.message : '알 수 없는 오류';
-      throw new ServiceUnavailableException(`Gemini 호출 실패: ${msg}`);
+      // 429(할당량/속도 제한)는 일시적 — 원본 에러 대신 사용자 안내 메시지로 변환
+      if (/429|quota|rate limit|too many requests/i.test(msg)) {
+        this.logger.warn(`NVIDIA 할당량 초과: ${msg}`);
+        throw new ServiceUnavailableException(
+          'AI 추천 요청이 많아 일시적으로 제한되었습니다. 잠시 후 다시 시도해주세요.',
+        );
+      }
+      this.logger.warn(`NVIDIA 호출 실패: ${msg}`);
+      throw new ServiceUnavailableException(
+        'AI 추천 생성에 실패했습니다. 잠시 후 다시 시도해주세요.',
+      );
     }
 
     const parsed = this.parse(raw);
-    // icon fallback: Gemini → og:image → google favicon
+    // icon fallback: AI → og:image → google favicon
     const icon =
       parsed.icon?.trim() ||
       meta.ogImage ||
@@ -177,7 +180,7 @@ export class SiteSuggestService {
       }
       return {};
     } catch {
-      this.logger.warn(`Gemini JSON 파싱 실패: ${raw.slice(0, 120)}`);
+      this.logger.warn(`NVIDIA JSON 파싱 실패: ${raw.slice(0, 120)}`);
       return {};
     }
   }

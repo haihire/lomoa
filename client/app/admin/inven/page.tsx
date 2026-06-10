@@ -155,7 +155,9 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
   // 백드롭 클릭으로 모달을 닫되, "프레스를 백드롭에서 시작"한 경우에만 닫는다.
   // (입력칸 텍스트를 드래그 선택하다 마우스를 백드롭에서 떼면 click 타깃이
   //  오버레이가 되어 의도치 않게 닫히는 문제 방지)
-  const overlayPressOnSelf = useRef(false);
+  // 모달별로 ref를 분리해 서로 영향을 주지 않게 한다.
+  const addOverlayPressOnSelf = useRef(false);
+  const confirmOverlayPressOnSelf = useRef(false);
 
   // "+ 사이트 추가" → 모달 열고 후보 정보로 폼 채우기 (URL은 도메인 루트)
   const openAddModal = (c: SiteCandidate) => {
@@ -345,18 +347,18 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
         <div
           className="admin-modal-overlay"
           onMouseDown={(e) => {
-            overlayPressOnSelf.current = e.target === e.currentTarget;
+            addOverlayPressOnSelf.current = e.target === e.currentTarget;
           }}
           onClick={(e) => {
             // mousedown·click 모두 오버레이 자신에서 일어난 진짜 백드롭 클릭만 닫기
             if (
               !saving &&
               e.target === e.currentTarget &&
-              overlayPressOnSelf.current
+              addOverlayPressOnSelf.current
             ) {
               closeAddModal();
             }
-            overlayPressOnSelf.current = false;
+            addOverlayPressOnSelf.current = false;
           }}
         >
           <div className="admin-modal w-full max-w-2xl p-6">
@@ -463,13 +465,13 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
         <div
           className="admin-modal-overlay"
           onMouseDown={(e) => {
-            overlayPressOnSelf.current = e.target === e.currentTarget;
+            confirmOverlayPressOnSelf.current = e.target === e.currentTarget;
           }}
           onClick={(e) => {
-            if (e.target === e.currentTarget && overlayPressOnSelf.current) {
+            if (e.target === e.currentTarget && confirmOverlayPressOnSelf.current) {
               setConfirmTarget(null);
             }
-            overlayPressOnSelf.current = false;
+            confirmOverlayPressOnSelf.current = false;
           }}
         >
           <div className="admin-modal max-w-md w-[90%] p-5 space-y-4">

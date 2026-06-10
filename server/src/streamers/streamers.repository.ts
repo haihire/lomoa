@@ -32,6 +32,56 @@ export class StreamersRepository {
     }
   }
 
+  /**
+   * 게시일이 최근 `days`일 이내인 영상을 video_id 기준 1건씩(최신 스냅샷의 조회수)
+   * 게시일 내림차순으로 반환한다.
+   *
+   * youtube_view_snapshots 는 (video_id, recorded_date) 당 1행이라 같은 영상이
+   * 여러 날짜로 누적된다. DISTINCT ON 으로 가장 최근에 기록된 행만 골라
+   * 최신 조회수를 쓴다. 7일 창 밖으로 밀려나 더는 갱신되지 않는 영상도
+   * 게시일이 7일 이내면 그대로 노출된다(= 누적 서빙).
+   */
+  async findRecentVideos(days: number): Promise<YoutubeVideoItem[]> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        video_id: string;
+        title: string;
+        channel_title: string;
+        thumbnail_url: string;
+        published_at: Date;
+        duration: string;
+        view_count: bigint;
+      }>
+    >`
+      SELECT DISTINCT ON (video_id)
+        video_id,
+        title,
+        channel_title,
+        thumbnail_url,
+        published_at,
+        duration,
+        view_count
+      FROM youtube_view_snapshots
+      WHERE published_at >= NOW() - (${days}::int * INTERVAL '1 day')
+      ORDER BY video_id, recorded_date DESC
+    `;
+
+    return rows
+      .map((r) => ({
+        videoId: r.video_id,
+        title: r.title,
+        channelTitle: r.channel_title,
+        thumbnailUrl: r.thumbnail_url,
+        publishedAt: r.published_at.toISOString(),
+        duration: r.duration,
+        viewCount: Number(r.view_count),
+      }))
+      .sort(
+        (a, b) =>
+          new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
+      );
+  }
+
   async findViewHistory(
     days: number,
   ): Promise<{ date: string; avg: number }[]> {

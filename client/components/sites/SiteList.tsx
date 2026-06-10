@@ -135,6 +135,7 @@ export default function SiteList({ sites }: Props) {
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {sorted.map((site) => {
             const isFav = favSet.has(site.href);
+            const favicon = faviconUrl(site.href); // 사이트당 1회만 파싱
             const trackSiteClick = () => {
               const payload = {
                 type: "site-click",
@@ -214,10 +215,10 @@ export default function SiteList({ sites }: Props) {
 
                   <div className="flex items-start justify-between gap-2 pr-5">
                     <div className="flex min-w-0 items-center gap-1.5">
-                      {faviconUrl(site.href) && (
+                      {favicon && (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={faviconUrl(site.href)!}
+                          src={favicon}
                           alt=""
                           width={16}
                           height={16}

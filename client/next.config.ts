@@ -2,6 +2,11 @@ import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // 렌더 차단 CSS(<link>)를 HTML <style>로 인라인 → 크리티컬 요청 체인 단축.
+  // 정적 ISR HTML이 엣지에 캐시되므로 인라인 CSS도 함께 캐시되어 별도 왕복 제거.
+  experimental: {
+    inlineCss: true,
+  },
   images: {
     remotePatterns: [
       {

@@ -9,6 +9,10 @@ on:
         required: false
         default: "100"
 
+# configure-aws-credentials@v5가 아직 Node 20 런타임이라 강제로 Node 24에서 실행 (2026-06-16 deprecation 대응)
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 permissions:
   contents: read
   id-token: write
@@ -18,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ secrets.AWS_REGION }}

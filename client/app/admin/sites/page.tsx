@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -110,6 +110,11 @@ export default function AdminSitesPage() {
   const [busyMessage, setBusyMessage] = useState<string | null>(null);
   const role = useAdminRole();
   const isGuest = role === "guest";
+
+  // 백드롭 클릭으로 모달을 닫되, "프레스를 백드롭에서 시작"한 경우에만 닫는다.
+  // (입력칸 텍스트를 드래그 선택하다 마우스를 백드롭에서 떼면 click 타깃이
+  //  오버레이가 되어 의도치 않게 닫히는 문제 방지)
+  const overlayPressOnSelf = useRef(false);
 
   // 추가/수정 폼
   const [showForm, setShowForm] = useState(false);
@@ -419,7 +424,6 @@ export default function AdminSitesPage() {
   }
 
   const [purging, setPurging] = useState(false);
-  const [downloading, setDownloading] = useState(false);
 
   async function handlePurge() {
     if (!requireMaster("사이트 캐시 새로고침")) return;
@@ -427,27 +431,6 @@ export default function AdminSitesPage() {
     await purgeSitesCache();
     setPurging(false);
     alert("사이트 캐시가 무효화됐습니다.");
-  }
-
-  async function handleDownload() {
-    setDownloading(true);
-    try {
-      const res = await fetch("/api/admin/sync/sites/local-export");
-      if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        alert(`다운로드 실패 (${res.status}): ${txt}`);
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `loa_sites-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } finally {
-      setDownloading(false);
-    }
   }
 
   const isProcessing = busyMessage !== null;
@@ -472,14 +455,6 @@ export default function AdminSitesPage() {
           )}
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={handleDownload}
-            disabled={downloading || isProcessing}
-            className="admin-btn admin-btn-secondary"
-            title="현재 사이트 데이터를 JSON으로 다운로드"
-          >
-            {downloading ? "다운로드 중..." : "다운로드"}
-          </button>
           <button
             onClick={handlePurge}
             disabled={purging || isProcessing}
@@ -508,8 +483,19 @@ export default function AdminSitesPage() {
       {showForm && (
         <div
           className="admin-modal-overlay"
+          onMouseDown={(e) => {
+            overlayPressOnSelf.current = e.target === e.currentTarget;
+          }}
           onClick={(e) => {
-            if (!isProcessing && e.target === e.currentTarget) cancelEdit();
+            // mousedown·click 모두 오버레이 자신에서 일어난 진짜 백드롭 클릭만 닫기
+            if (
+              !isProcessing &&
+              e.target === e.currentTarget &&
+              overlayPressOnSelf.current
+            ) {
+              cancelEdit();
+            }
+            overlayPressOnSelf.current = false;
           }}
         >
           <div className="admin-modal w-full max-w-2xl p-6">

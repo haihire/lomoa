@@ -135,8 +135,13 @@ export class SiteSuggestService {
       raw = completion.choices[0]?.message?.content ?? '';
     } catch (e) {
       const msg = e instanceof Error ? e.message : '알 수 없는 오류';
-      // 429(할당량/속도 제한)는 일시적 — 원본 에러 대신 사용자 안내 메시지로 변환
-      if (/429|quota|rate limit|too many requests/i.test(msg)) {
+      // 429(할당량/속도 제한)는 일시적 — 원본 에러 대신 사용자 안내 메시지로 변환.
+      // openai SDK는 HTTP 상태를 e.status로 제공하므로 우선 그것으로 판정하고,
+      // 메시지 정규식은 포맷이 다른 경우를 위한 보조 수단으로 둔다.
+      const isRateLimit =
+        (e instanceof OpenAI.APIError && e.status === 429) ||
+        /429|quota|rate limit|too many requests/i.test(msg);
+      if (isRateLimit) {
         this.logger.warn(`NVIDIA 할당량 초과: ${msg}`);
         throw new ServiceUnavailableException(
           'AI 추천 요청이 많아 일시적으로 제한되었습니다. 잠시 후 다시 시도해주세요.',

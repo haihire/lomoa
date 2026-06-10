@@ -10,8 +10,8 @@ Sentry.init({
   // 운영(production)에서만 전송 — 로컬 개발 중 에러로 쿼터 낭비 방지.
   enabled: process.env.NODE_ENV === "production",
 
-  // 성능 트레이싱 10% 샘플링 (무료 쿼터 절약). 에러는 100% 그대로 수집됨.
-  tracesSampleRate: 0.1,
+  // 성능 트레이싱 미사용(에러 전용) — tracesSampleRate 제거. 트레이싱 코드는
+  // next.config의 bundleSizeOptimizations.excludeTracing으로 트리셰이크됨.
 
   // 개인정보 최소 수집 원칙 — IP·헤더 등 PII 전송 끔.
   sendDefaultPii: false,

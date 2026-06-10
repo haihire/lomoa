@@ -131,8 +131,9 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
   const [aiIcon, setAiIcon] = useState<string>("");
   // 자동 fetch로 가져온 기본 아이콘 (AI 선택 후에도 복구 가능하도록 보관)
   const [fetchedIcon, setFetchedIcon] = useState<string>("");
-  // 경쟁 상태 방지: 현재 열린 후보 ID와 응답 대상 ID가 다르면 폼 갱신 무시
-  const [activeFetchId, setActiveFetchId] = useState<number | null>(null);
+  // 경쟁 상태 방지: 현재 열린 후보 ID와 응답 대상 ID가 다르면 폼 갱신 무시.
+  // 값은 setter의 함수형 업데이트(cur) 안에서만 읽으므로 값 바인딩은 생략.
+  const [, setActiveFetchId] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);

@@ -9,7 +9,6 @@ const NAV = [
   { href: "/admin/sites", label: "사이트 관리" },
   { href: "/admin/youtube", label: "유튜브" },
   { href: "/admin/inven", label: "사이트 추천" },
-  { href: "/admin/sync", label: "DB 동기화(로컬전용)" },
 ];
 
 export default function AdminLayout({

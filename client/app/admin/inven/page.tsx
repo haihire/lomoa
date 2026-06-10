@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { buildGuestNotice, useAdminRole } from "@/lib/admin-role";
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
@@ -131,8 +131,9 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
   const [aiIcon, setAiIcon] = useState<string>("");
   // 자동 fetch로 가져온 기본 아이콘 (AI 선택 후에도 복구 가능하도록 보관)
   const [fetchedIcon, setFetchedIcon] = useState<string>("");
-  // 경쟁 상태 방지: 현재 열린 후보 ID와 응답 대상 ID가 다르면 폼 갱신 무시
-  const [activeFetchId, setActiveFetchId] = useState<number | null>(null);
+  // 경쟁 상태 방지: 현재 열린 후보 ID와 응답 대상 ID가 다르면 폼 갱신 무시.
+  // 값은 setter의 함수형 업데이트(cur) 안에서만 읽으므로 값 바인딩은 생략.
+  const [, setActiveFetchId] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -150,6 +151,13 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
   useEffect(() => {
     load();
   }, []);
+
+  // 백드롭 클릭으로 모달을 닫되, "프레스를 백드롭에서 시작"한 경우에만 닫는다.
+  // (입력칸 텍스트를 드래그 선택하다 마우스를 백드롭에서 떼면 click 타깃이
+  //  오버레이가 되어 의도치 않게 닫히는 문제 방지)
+  // 모달별로 ref를 분리해 서로 영향을 주지 않게 한다.
+  const addOverlayPressOnSelf = useRef(false);
+  const confirmOverlayPressOnSelf = useRef(false);
 
   // "+ 사이트 추가" → 모달 열고 후보 정보로 폼 채우기 (URL은 도메인 루트)
   const openAddModal = (c: SiteCandidate) => {
@@ -338,8 +346,19 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
       {addTarget && (
         <div
           className="admin-modal-overlay"
+          onMouseDown={(e) => {
+            addOverlayPressOnSelf.current = e.target === e.currentTarget;
+          }}
           onClick={(e) => {
-            if (!saving && e.target === e.currentTarget) closeAddModal();
+            // mousedown·click 모두 오버레이 자신에서 일어난 진짜 백드롭 클릭만 닫기
+            if (
+              !saving &&
+              e.target === e.currentTarget &&
+              addOverlayPressOnSelf.current
+            ) {
+              closeAddModal();
+            }
+            addOverlayPressOnSelf.current = false;
           }}
         >
           <div className="admin-modal w-full max-w-2xl p-6">
@@ -445,8 +464,14 @@ function CandidatesTab({ requireMaster }: { requireMaster: (action: string) => b
       {confirmTarget && (
         <div
           className="admin-modal-overlay"
+          onMouseDown={(e) => {
+            confirmOverlayPressOnSelf.current = e.target === e.currentTarget;
+          }}
           onClick={(e) => {
-            if (e.target === e.currentTarget) setConfirmTarget(null);
+            if (e.target === e.currentTarget && confirmOverlayPressOnSelf.current) {
+              setConfirmTarget(null);
+            }
+            confirmOverlayPressOnSelf.current = false;
           }}
         >
           <div className="admin-modal max-w-md w-[90%] p-5 space-y-4">

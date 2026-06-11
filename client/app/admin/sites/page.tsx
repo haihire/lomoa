@@ -440,9 +440,9 @@ export default function AdminSitesPage() {
   );
 
   return (
-    <div>
+    <div className="flex h-full flex-col">
       {/* 헤더 */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
+      <div className="flex shrink-0 flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
         <div>
           <h1 className="admin-page-title">사이트 관리</h1>
           {accessNotice && (
@@ -513,7 +513,7 @@ export default function AdminSitesPage() {
               <div className="flex-1 min-w-0">
                 <div className="grid grid-cols-2 gap-4">
                   {(
-                    ["name", "href", "category", "description", "icon"] as const
+                    ["name", "href", "category", "description"] as const
                   ).map((field) => (
                     <div
                       key={field}
@@ -566,7 +566,7 @@ export default function AdminSitesPage() {
       )}
 
       {error && (
-        <div className="admin-card mb-4 px-4 py-3 border-red-200 bg-red-50">
+        <div className="admin-card mb-4 shrink-0 px-4 py-3 border-red-200 bg-red-50">
           <p className="text-sm text-red-600">{error}</p>
         </div>
       )}
@@ -577,9 +577,9 @@ export default function AdminSitesPage() {
           </p>
         </div>
       ) : (
-        <div className="flex gap-4 items-start">
-        <div className="admin-card overflow-hidden flex-1 min-w-0">
-          <div className="overflow-x-auto">
+        <div className="flex min-h-0 flex-1 items-stretch gap-4">
+        <div className="admin-card overflow-hidden flex-1 min-w-0 flex flex-col">
+          <div className="overflow-auto flex-1">
             <table className="admin-table table-fixed w-full min-w-[860px]">
               <colgroup>
                 <col style={{ width: "15%" }} />
@@ -695,7 +695,7 @@ export default function AdminSitesPage() {
         </div>
 
         {/* 우측: 선택 사이트 7일 클릭 추이 */}
-        <div className="admin-card w-80 shrink-0 p-4 hidden lg:block">
+        <div className="admin-card w-80 shrink-0 self-start p-4 hidden lg:block">
           {!selectedSite ? (
             <p className="text-sm text-[color:var(--admin-text-muted)] text-center py-10">
               사이트를 클릭하면

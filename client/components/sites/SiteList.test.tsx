@@ -73,18 +73,23 @@ describe("SiteList", () => {
     expect(screen.getByText("인벤 커뮤니티")).toBeInTheDocument();
   });
 
-  it("icon이 있는 사이트는 img가 렌더링된다", () => {
-    const { container } = render(<SiteList sites={MOCK_SITES} />);
+  it("icon이 지정된 사이트는 해당 icon이 사용된다", () => {
+    const { container } = render(<SiteList sites={[MOCK_SITES[1]]} />);
 
     const img = container.querySelector("img");
     expect(img).not.toBeNull();
     expect(img).toHaveAttribute("src", "https://example.com/icon.png");
   });
 
-  it("icon이 없는 사이트는 img가 없다", () => {
+  it("icon이 없는 사이트는 href 기반 favicon이 표시된다", () => {
     const { container } = render(<SiteList sites={[MOCK_SITES[0]]} />);
 
-    expect(container.querySelector("img")).toBeNull();
+    const img = container.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img).toHaveAttribute(
+      "src",
+      "https://www.google.com/s2/favicons?domain=lostark.game.onstove.com&sz=32",
+    );
   });
 
   it("빈 배열이면 아무것도 렌더링되지 않는다", () => {

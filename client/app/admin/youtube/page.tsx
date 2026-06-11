@@ -99,7 +99,6 @@ function BarChart({
 
 export default function AdminYoutubePage() {
   const [items, setItems] = useState<YoutubeVideo[]>([]);
-  const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [purging, setPurging] = useState(false);
   const [purgeResult, setPurgeResult] = useState<"idle" | "done" | "error">(
@@ -147,7 +146,6 @@ export default function AdminYoutubePage() {
         total: number;
       };
       setItems(data.items ?? []);
-      setTotal(data.total ?? data.items?.length ?? 0);
     } catch {
       setItems([]);
     } finally {
@@ -255,11 +253,6 @@ export default function AdminYoutubePage() {
       <div className="flex items-end justify-between mb-5 shrink-0">
         <div>
           <h1 className="admin-page-title">유튜브 인기 영상</h1>
-          <p className="admin-page-subtitle mt-1">
-            {total !== null
-              ? `총 ${total}개의 인기 영상이 캐시되어 있습니다.`
-              : "캐시된 영상 목록을 확인합니다."}
-          </p>
           {accessNotice && (
             <pre className="mt-3 whitespace-pre-wrap rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               {accessNotice}

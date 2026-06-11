@@ -147,7 +147,8 @@ export class AdminMonitoringService implements OnModuleInit {
   /** source별 페이지 로딩 추이. days에 따라 버킷 크기 자동 선택. */
   async getPageLoadSeries(source: PageLoadSource, days: number) {
     const safeDays = Math.max(1, Math.min(30, Math.trunc(days)));
-    const bucketHours = safeDays <= 1 ? 1 : safeDays <= 7 ? 6 : 24;
+    // 1일: 1시간 단위, 7일/30일: 1일(24시간) 단위
+    const bucketHours = safeDays <= 1 ? 1 : 24;
     const rows = await this.monitoringRepo.findPageLoadSeries(
       source,
       safeDays,

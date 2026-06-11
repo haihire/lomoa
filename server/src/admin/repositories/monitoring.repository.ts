@@ -366,6 +366,8 @@ export class MonitoringRepository {
     rangeDays: number,
     bucketHours: number,
   ) {
+    // 시간 단위 버킷(1일 보기)은 시각만, 일 단위 버킷(7/30일 보기)은 날짜만 표기
+    const bucketFormat = bucketHours < 24 ? 'HH24:MI' : 'MM-DD';
     return this.prisma.$queryRaw<PageLoadSeriesRow[]>`
       WITH samples AS (
         SELECT
@@ -385,7 +387,7 @@ export class MonitoringRepository {
                (${bucketHours} * INTERVAL '1 hour')
              ) AS g
       )
-      SELECT TO_CHAR(b.bucket_start, 'MM-DD HH24:MI') AS bucket,
+      SELECT TO_CHAR(b.bucket_start, ${bucketFormat}) AS bucket,
              ROUND(AVG(s.ttfb_ms))::int AS avg_ttfb,
              ROUND(AVG(s.dcl_ms))::int  AS avg_dcl,
              ROUND(AVG(s.lcp_ms))::int  AS avg_lcp,

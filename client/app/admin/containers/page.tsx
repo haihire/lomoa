@@ -232,9 +232,6 @@ export default function ContainersPage() {
       <div className="mb-5 flex shrink-0 items-start justify-between gap-4">
         <div>
           <h1 className="admin-page-title">컨테이너 현황</h1>
-          <p className="admin-page-subtitle mt-1">
-            EC2 호스트와 Docker 컨테이너의 상태·자원 사용량을 확인합니다.
-          </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1 pt-1 text-xs text-[color:var(--admin-text-muted)]">
           {cards.length > 0 && (

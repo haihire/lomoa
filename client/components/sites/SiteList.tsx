@@ -204,32 +204,39 @@ export default function SiteList({ sites }: Props) {
 
                   <div className="flex items-start justify-between gap-2 pr-5">
                     <div className="flex min-w-0 items-center gap-1.5">
-                      {site.icon && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={site.icon}
-                          alt=""
-                          width={16}
-                          height={16}
-                          className="shrink-0 rounded-sm"
-                          onError={(e) => {
-                            const img = e.target as HTMLImageElement;
-                            const domain = (() => {
-                              try {
-                                return new URL(site.href).hostname;
-                              } catch {
-                                return "";
+                      {(() => {
+                        const domain = (() => {
+                          try {
+                            return new URL(site.href).hostname;
+                          } catch {
+                            return "";
+                          }
+                        })();
+                        const fallback = domain
+                          ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
+                          : "";
+                        // icon이 있으면 우선 사용, 없으면 href 기반 favicon으로 표시
+                        const primarySrc = site.icon || fallback;
+                        if (!primarySrc) return null;
+                        return (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={primarySrc}
+                            alt=""
+                            width={16}
+                            height={16}
+                            className="shrink-0 rounded-sm"
+                            onError={(e) => {
+                              const img = e.target as HTMLImageElement;
+                              if (fallback && img.src !== fallback) {
+                                img.src = fallback;
+                              } else {
+                                img.style.display = "none";
                               }
-                            })();
-                            const fallback = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
-                            if (img.src !== fallback && domain) {
-                              img.src = fallback;
-                            } else {
-                              img.style.display = "none";
-                            }
-                          }}
-                        />
-                      )}
+                            }}
+                          />
+                        );
+                      })()}
                       <span className="truncate font-semibold text-slate-900 dark:text-slate-100">
                         {site.name}
                       </span>

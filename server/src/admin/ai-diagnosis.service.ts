@@ -297,9 +297,11 @@ export class AiDiagnosisService {
 
     region = region || DEFAULT_REGION;
     const spec = instanceType ? (INSTANCE_PRICING[instanceType] ?? null) : null;
+    const resolved: Ec2Info = { instanceType, region, spec };
 
-    this.ec2Cache = { instanceType, region, spec };
-    return this.ec2Cache;
+    // instanceType을 못 구한 경우(IMDS 일시 실패 등)는 캐시하지 않고 다음에 재시도한다.
+    if (instanceType) this.ec2Cache = resolved;
+    return resolved;
   }
 
   /** IMDSv2(토큰 발급 후 조회)로 인스턴스 타입/리전을 가져온다. 실패 시 null. */

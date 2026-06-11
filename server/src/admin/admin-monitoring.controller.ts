@@ -62,14 +62,10 @@ export class AdminMonitoringController {
 
   @UseGuards(AdminGuard)
   @Get('admin/monitoring/page-load-series')
-  pageLoadSeries(
-    @Query('source') source?: string,
-    @Query('days') days?: string,
-  ) {
-    const safeSource = source === 'synthetic' ? 'synthetic' : 'rum';
+  pageLoadSeries(@Query('days') days?: string) {
     const parsed = Number(days);
     const rangeDays = Number.isFinite(parsed) ? parsed : 7;
-    return this.monitoring.getPageLoadSeries(safeSource, rangeDays);
+    return this.monitoring.getPageLoadSeries(rangeDays);
   }
 
   @Post('telemetry/page-load')

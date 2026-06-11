@@ -124,9 +124,6 @@ export default function MonitoringPage() {
   const [sectionTab, setSectionTab] = useState<
     "sites" | "stat-builds" | "youtube"
   >("sites");
-  const [pageLoadSource, setPageLoadSource] = useState<"rum" | "synthetic">(
-    "rum",
-  );
   const [pageLoadDays, setPageLoadDays] = useState<1 | 7 | 30>(7);
   const [pageLoadSeries, setPageLoadSeries] = useState<PageLoadPoint[]>([]);
   const [pageLoadLoading, setPageLoadLoading] = useState(true);
@@ -215,7 +212,7 @@ export default function MonitoringPage() {
     async function loadPageLoad() {
       try {
         const res = await fetch(
-          `/api/admin/monitoring/page-load-series?source=${pageLoadSource}&days=${pageLoadDays}`,
+          `/api/admin/monitoring/page-load-series?days=${pageLoadDays}`,
           { cache: "no-store" },
         );
         if (!alive || !res.ok) return;
@@ -231,7 +228,7 @@ export default function MonitoringPage() {
     return () => {
       alive = false;
     };
-  }, [pageLoadSource, pageLoadDays]);
+  }, [pageLoadDays]);
 
   const pageLoadLatest = useMemo(() => {
     for (let i = pageLoadSeries.length - 1; i >= 0; i -= 1) {
@@ -364,34 +361,16 @@ export default function MonitoringPage() {
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <p className="text-sm font-semibold">메인페이지 로딩 속도 추이</p>
-              {pageLoadLatest && (
+              {pageLoadLatest && pageLoadLatest.load != null && (
                 <span className="text-xs text-[color:var(--admin-text-muted)]">
                   최근 전체로딩{" "}
                   <span className="font-semibold text-[color:var(--admin-text)]">
-                    {pageLoadLatest.load ?? "-"}ms
+                    {(pageLoadLatest.load / 1000).toFixed(1)}초
                   </span>
-                  {pageLoadLatest.lcp != null && ` · LCP ${pageLoadLatest.lcp}ms`}
                 </span>
               )}
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 rounded-md bg-slate-100 p-0.5">
-                {(
-                  [
-                    { key: "rum", label: "실사용자" },
-                    { key: "synthetic", label: "합성" },
-                  ] as const
-                ).map((s) => (
-                  <button
-                    key={s.key}
-                    type="button"
-                    onClick={() => setPageLoadSource(s.key)}
-                    className={`rounded px-2 py-1 text-xs ${pageLoadSource === s.key ? "bg-white font-semibold text-[color:var(--admin-text)]" : "text-[color:var(--admin-text-muted)]"}`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
               <div className="flex gap-1">
                 {([1, 7, 30] as const).map((d) => (
                   <button
@@ -406,12 +385,6 @@ export default function MonitoringPage() {
               </div>
             </div>
           </div>
-          {pageLoadSource === "synthetic" && (
-            <p className="mb-2 text-[11px] text-[color:var(--admin-text-subtle)]">
-              합성은 서버가 10분마다 메인 HTML 문서를 받아 측정 (TTFB·문서완료만,
-              JS/자원/렌더 제외)
-            </p>
-          )}
           <div className="h-48">
             {pageLoadLoading ? (
               <div className="grid h-full place-items-center text-sm text-[color:var(--admin-text-muted)]">
@@ -440,9 +413,7 @@ export default function MonitoringPage() {
                     wrapperStyle={{ pointerEvents: "none" }}
                   />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
-                  {PAGE_LOAD_METRICS.filter(
-                    (m) => pageLoadSource === "rum" || m.key === "ttfb" || m.key === "load",
-                  ).map((m) => (
+                  {PAGE_LOAD_METRICS.map((m) => (
                     <Line
                       key={m.key}
                       type="monotone"

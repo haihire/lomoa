@@ -445,9 +445,6 @@ export default function AdminSitesPage() {
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
         <div>
           <h1 className="admin-page-title">사이트 관리</h1>
-          <p className="admin-page-subtitle mt-1">
-            등록된 사이트 상태를 관리하고 즉시 반영 여부를 확인합니다.
-          </p>
           {accessNotice && (
             <pre className="mt-3 whitespace-pre-wrap rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
               {accessNotice}

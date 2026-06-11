@@ -336,9 +336,6 @@ export default function MonitoringPage() {
       <div className="mb-5 shrink-0 flex items-start justify-between gap-4">
         <div>
           <h1 className="admin-page-title">모니터링</h1>
-          <p className="admin-page-subtitle mt-1">
-            운영 상태와 추세를 빠르게 확인합니다.
-          </p>
         </div>
         <div className="flex shrink-0 items-center pt-1 text-xs text-[color:var(--admin-text-muted)]">
           평균 응답

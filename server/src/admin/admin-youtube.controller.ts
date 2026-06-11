@@ -18,7 +18,11 @@ export class AdminYoutubeController {
   @Post('block')
   async block(@Body() body: { videoId?: string }) {
     if (!body.videoId) throw new BadRequestException('videoId는 필수입니다');
-    await this.streamers.blockVideo(body.videoId);
+    try {
+      await this.streamers.blockVideo(body.videoId);
+    } catch (err) {
+      throw new BadRequestException((err as Error).message);
+    }
     return { ok: true, videoId: body.videoId };
   }
 
@@ -26,7 +30,11 @@ export class AdminYoutubeController {
   @Post('unblock')
   async unblock(@Body() body: { videoId?: string }) {
     if (!body.videoId) throw new BadRequestException('videoId는 필수입니다');
-    await this.streamers.unblockVideo(body.videoId);
+    try {
+      await this.streamers.unblockVideo(body.videoId);
+    } catch (err) {
+      throw new BadRequestException((err as Error).message);
+    }
     return { ok: true, videoId: body.videoId };
   }
 

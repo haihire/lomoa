@@ -194,7 +194,11 @@ export default function AdminYoutubePage() {
         setBlockedIds((prev) =>
           prev.includes(videoId) ? prev : [...prev, videoId],
         );
+      } else {
+        alert("영상 숨김 처리에 실패했습니다.");
       }
+    } catch {
+      alert("네트워크 오류가 발생했습니다.");
     } finally {
       setBusyId(null);
     }
@@ -212,7 +216,11 @@ export default function AdminYoutubePage() {
       if (res.ok) {
         setBlockedIds((prev) => prev.filter((id) => id !== videoId));
         await load(); // 복원된 영상이 목록에 다시 나타나도록 갱신
+      } else {
+        alert("숨김 해제에 실패했습니다.");
       }
+    } catch {
+      alert("네트워크 오류가 발생했습니다.");
     } finally {
       setBusyId(null);
     }

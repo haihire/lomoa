@@ -466,6 +466,9 @@ export class StreamersService implements OnModuleInit {
 
   /** 영상을 숨김 목록에 추가하고 서빙 캐시를 비워 즉시 반영 */
   async blockVideo(videoId: string): Promise<void> {
+    if (this.youtubeRedisReadOnly) {
+      throw new Error('YOUTUBE_REDIS_READONLY 활성화 — 숨김 쓰기 불가');
+    }
     await this.youtubeRedis.sadd(BLOCKED_KEY, videoId);
     await this.youtubeRedis.del(POPULAR_CACHE_KEY).catch(() => {});
     this.logger.log(`YouTube 영상 숨김: ${videoId}`);
@@ -473,6 +476,9 @@ export class StreamersService implements OnModuleInit {
 
   /** 영상을 숨김 목록에서 제거(복원)하고 서빙 캐시를 비움 */
   async unblockVideo(videoId: string): Promise<void> {
+    if (this.youtubeRedisReadOnly) {
+      throw new Error('YOUTUBE_REDIS_READONLY 활성화 — 숨김 쓰기 불가');
+    }
     await this.youtubeRedis.srem(BLOCKED_KEY, videoId);
     await this.youtubeRedis.del(POPULAR_CACHE_KEY).catch(() => {});
     this.logger.log(`YouTube 영상 숨김 해제: ${videoId}`);

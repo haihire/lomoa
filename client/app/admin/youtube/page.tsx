@@ -143,7 +143,6 @@ export default function AdminYoutubePage() {
       if (!res.ok) throw new Error();
       const data = (await res.json()) as {
         items: YoutubeVideo[];
-        total: number;
       };
       setItems(data.items ?? []);
     } catch {

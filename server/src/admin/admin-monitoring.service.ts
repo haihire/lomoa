@@ -140,6 +140,36 @@ export class AdminMonitoringService implements OnModuleInit {
     });
   }
 
+  /** 배포 이벤트 기록(GitHub Actions가 전달). nest/next만 허용. */
+  async recordDeployEvent(input: {
+    service: 'nest' | 'next';
+    sha?: string;
+    detail?: string;
+  }): Promise<void> {
+    const detail =
+      input.detail ?? (input.sha ? `sha:${input.sha.slice(0, 12)}` : null);
+    await this.monitoringRepo.recordContainerEvent({
+      service: input.service,
+      eventType: 'deploy',
+      detail,
+      occurredAt: new Date(),
+    });
+  }
+
+  /** 최근 변경(재시작/배포) 이벤트 — AI 컨텍스트/타임라인용. */
+  async getRecentContainerEvents(days = 14, limit = 30) {
+    const rows = await this.monitoringRepo.findRecentContainerEvents(
+      days,
+      limit,
+    );
+    return rows.map((r) => ({
+      service: r.service,
+      eventType: r.event_type,
+      detail: r.detail,
+      occurredAt: r.occurred_at,
+    }));
+  }
+
   /** 페이지 로딩 추이(실사용자 RUM). days에 따라 버킷 크기 자동 선택. */
   async getPageLoadSeries(days: number) {
     const safeDays = Math.max(1, Math.min(30, Math.trunc(days)));

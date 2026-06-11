@@ -684,17 +684,6 @@ export class MonitoringRepository {
     `;
   }
 
-  /** 특정 서비스의 가장 최근 이벤트 occurred_at (없으면 null). 중복 감지 방지용. */
-  async findLatestEventOccurredAt(service: string): Promise<Date | null> {
-    const rows = await this.prisma.$queryRaw<Array<{ occurred_at: Date }>>`
-      SELECT occurred_at FROM container_events
-      WHERE service = ${service}
-      ORDER BY occurred_at DESC
-      LIMIT 1
-    `;
-    return rows[0]?.occurred_at ?? null;
-  }
-
   /** 최근 N일 변경 이벤트 (최신순). */
   async findRecentContainerEvents(
     days: number,

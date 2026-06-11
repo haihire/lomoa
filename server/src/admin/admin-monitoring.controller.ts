@@ -13,15 +13,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { createHmac, timingSafeEqual } from 'crypto';
 import { AdminGuard } from './admin.guard';
 import { AdminMonitoringService } from './admin-monitoring.service';
 import { DockerStatsService } from './docker-stats.service';
-import {
-  AiDiagnosisService,
-  type AdminRole,
-  type ChatMessage,
-} from './ai-diagnosis.service';
+import { AiDiagnosisService, type ChatMessage } from './ai-diagnosis.service';
 
 @Controller('api')
 export class AdminMonitoringController {
@@ -68,23 +63,26 @@ export class AdminMonitoringController {
     return this.dockerStats.getContainerHistory(container ?? 'nest');
   }
 
-  // Vercel 배포 성공 웹훅(서명 검증). next(프론트) 배포 시점을 이벤트로 기록.
-  // 관리자 인증 대신 x-vercel-signature(HMAC-SHA1) 로 검증한다.
-  @Post('webhooks/vercel-deploy')
+  // 배포 이벤트 기록(GitHub Actions가 호출). 관리자 세션 대신 공유 토큰으로 인증.
+  // nest: 배포 워크플로에서, next: Vercel 배포 성공 시 deployment_status 워크플로에서 POST.
+  @Post('webhooks/deploy')
   @HttpCode(HttpStatus.OK)
-  async vercelDeploy(
-    @Req() req: Request & { rawBody?: Buffer },
-    @Headers('x-vercel-signature') signature: string | undefined,
-    @Body() body: { type?: string; payload?: Record<string, unknown> },
+  async deployEvent(
+    @Headers('x-deploy-token') token: string | undefined,
+    @Body() body: { service?: string; sha?: string; detail?: string },
   ) {
-    const secret = process.env.VERCEL_WEBHOOK_SECRET ?? '';
-    if (!secret) {
-      throw new ForbiddenException('webhook이 구성되지 않았습니다');
+    const expected = process.env.DEPLOY_EVENT_TOKEN ?? '';
+    if (!expected || token !== expected) {
+      throw new ForbiddenException('invalid deploy token');
     }
-    if (!verifyVercelSignature(req.rawBody, signature, secret)) {
-      throw new ForbiddenException('서명이 유효하지 않습니다');
+    if (body?.service !== 'nest' && body?.service !== 'next') {
+      return { ok: false };
     }
-    await this.monitoring.recordNextDeployFromVercel(body);
+    await this.monitoring.recordDeployEvent({
+      service: body.service,
+      sha: body.sha,
+      detail: body.detail,
+    });
     return { ok: true };
   }
 
@@ -95,16 +93,12 @@ export class AdminMonitoringController {
     return this.aiDiagnosis.diagnose();
   }
 
-  // 운영 챗봇. 세션 role(master/guest)을 함께 넘겨 민감 질문은 guest에게 거부 응답.
+  // 운영 챗봇. 운영 데이터는 모든 관리자(guest 포함)가 동일하게 조회 가능.
+  // 민감정보(계정/시크릿/토큰/env)는 애초에 컨텍스트에 없어 누구도 못 봄.
   @UseGuards(AdminGuard)
   @Post('admin/monitoring/ai-chat')
-  aiChat(
-    @Req() req: Request & { adminUser?: { role?: 'master' | 'guest' } },
-    @Body() body: { messages?: ChatMessage[] },
-  ) {
-    const role: AdminRole =
-      req.adminUser?.role === 'master' ? 'master' : 'guest';
-    return this.aiDiagnosis.chat(body?.messages ?? [], role);
+  aiChat(@Body() body: { messages?: ChatMessage[] }) {
+    return this.aiDiagnosis.chat(body?.messages ?? []);
   }
 
   @UseGuards(AdminGuard)
@@ -282,17 +276,4 @@ export class AdminMonitoringController {
       );
     }
   }
-}
-
-/** Vercel 웹훅 서명(x-vercel-signature = HMAC-SHA1(rawBody, secret)) 검증. */
-function verifyVercelSignature(
-  rawBody: Buffer | undefined,
-  signature: string | undefined,
-  secret: string,
-): boolean {
-  if (!rawBody || !signature) return false;
-  const expected = createHmac('sha1', secret).update(rawBody).digest('hex');
-  const a = Buffer.from(expected);
-  const b = Buffer.from(signature);
-  return a.length === b.length && timingSafeEqual(a, b);
 }

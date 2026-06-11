@@ -45,8 +45,6 @@ type RetentionTable =
   | 'monitoring_api_probes'
   | 'apm_page_load_timings';
 
-export type PageLoadSource = 'rum' | 'synthetic';
-
 export interface PageLoadSeriesRow {
   bucket: string;
   avg_ttfb: number | null;
@@ -160,7 +158,7 @@ export class MonitoringRepository {
         created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `;
-    // 페이지 로딩 속도(RUM: 실사용자 / synthetic: 서버 합성 프로브). 지표는 NULL 허용.
+    // 페이지 로딩 속도(실사용자 RUM). source 컬럼은 과거 데이터 호환을 위해 유지. 지표는 NULL 허용.
     await this.prisma.$executeRaw`
       CREATE TABLE IF NOT EXISTS apm_page_load_timings (
         id BIGSERIAL PRIMARY KEY,
@@ -334,9 +332,8 @@ export class MonitoringRepository {
     `;
   }
 
-  /** 페이지 로딩 측정값 1건 저장. 지표는 NULL 허용(소스별로 채워지는 지표가 다름). */
+  /** 페이지 로딩 측정값 1건 저장(실사용자 RUM). 지표는 NULL 허용. */
   async recordPageLoad(input: {
-    source: PageLoadSource;
     path: string;
     deviceType: string;
     ttfbMs: number | null;
@@ -348,7 +345,7 @@ export class MonitoringRepository {
       INSERT INTO apm_page_load_timings
         (source, path, device_type, ttfb_ms, dcl_ms, lcp_ms, load_ms, created_at)
       VALUES (
-        ${input.source},
+        'rum',
         ${input.path},
         ${input.deviceType},
         ${input.ttfbMs},
@@ -360,12 +357,8 @@ export class MonitoringRepository {
     `;
   }
 
-  /** source별 시간버킷 평균(ttfb/dcl/lcp/load). 빈 버킷도 채워 반환. */
-  async findPageLoadSeries(
-    source: PageLoadSource,
-    rangeDays: number,
-    bucketHours: number,
-  ) {
+  /** 시간버킷 평균(ttfb/dcl/lcp/load). 빈 버킷도 채워 반환. */
+  async findPageLoadSeries(rangeDays: number, bucketHours: number) {
     // 시간 단위 버킷(1일 보기)은 시각만, 일 단위 버킷(7/30일 보기)은 날짜만 표기
     const bucketFormat = bucketHours < 24 ? 'HH24:MI' : 'MM-DD';
     return this.prisma.$queryRaw<PageLoadSeriesRow[]>`
@@ -374,7 +367,7 @@ export class MonitoringRepository {
           TO_TIMESTAMP(FLOOR(EXTRACT(EPOCH FROM created_at) / (${bucketHours} * 3600)) * (${bucketHours} * 3600)) AS bucket_start,
           ttfb_ms, dcl_ms, lcp_ms, load_ms
         FROM apm_page_load_timings
-        WHERE source = ${source}
+        WHERE source = 'rum'
           AND created_at >= NOW() - (${rangeDays}::int * INTERVAL '1 day')
       ),
       buckets AS (

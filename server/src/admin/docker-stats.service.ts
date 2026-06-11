@@ -224,6 +224,63 @@ export class DockerStatsService {
         `docker stats save failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    await this.detectContainerEvents();
+  }
+
+  /** 실행 중 컨테이너의 시작 시각(State.StartedAt)을 label→Date로 반환. */
+  private async getContainerStartedAt(): Promise<Map<ContainerName, Date>> {
+    const result = new Map<ContainerName, Date>();
+    const { stdout: idsOut } = await execFileAsync('docker', ['ps', '-q'], {
+      timeout: 10000,
+    });
+    const ids = idsOut
+      .trim()
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (ids.length === 0) return result;
+
+    const { stdout } = await execFileAsync(
+      'docker',
+      ['inspect', '--format', '{{.Name}}|{{.State.StartedAt}}', ...ids],
+      { timeout: 10000 },
+    );
+    for (const line of stdout.trim().split('\n')) {
+      const [rawName, startedAt] = line.split('|');
+      const name = (rawName ?? '').replace(/^\//, '').trim();
+      const label = CONTAINER_LABELS[name] as ContainerName | undefined;
+      if (!label || !VALID_CONTAINERS.includes(label)) continue;
+      const date = new Date((startedAt ?? '').trim());
+      if (!Number.isNaN(date.getTime())) result.set(label, date);
+    }
+    return result;
+  }
+
+  /**
+   * 컨테이너 시작 시각이 직전 기록과 달라지면(=재시작/재배포) 이벤트로 남긴다.
+   * 5분 폴링에 얹어 호출. 실패는 조용히 무시(다음 틱에 재시도).
+   */
+  async detectContainerEvents(): Promise<void> {
+    try {
+      const startedMap = await this.getContainerStartedAt();
+      for (const [label, startedAt] of startedMap) {
+        const last = await this.monitoringRepo.findLatestEventOccurredAt(label);
+        // 같은 시작 시각이면 변화 없음(1초 허용오차)
+        if (last && Math.abs(last.getTime() - startedAt.getTime()) < 1000) {
+          continue;
+        }
+        await this.monitoringRepo.recordContainerEvent({
+          service: label,
+          eventType: last ? 'restart' : 'baseline',
+          detail: null,
+          occurredAt: startedAt,
+        });
+      }
+    } catch (err: unknown) {
+      this.logger.warn(
+        `container event detect failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   @Cron('0 30 3 * * *')

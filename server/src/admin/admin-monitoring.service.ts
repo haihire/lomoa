@@ -140,6 +140,48 @@ export class AdminMonitoringService implements OnModuleInit {
     });
   }
 
+  /** Vercel 배포 성공 웹훅을 받아 next 배포 이벤트로 기록. production만 기록. */
+  async recordNextDeployFromVercel(event: {
+    type?: string;
+    payload?: Record<string, unknown>;
+  }): Promise<void> {
+    if (event?.type !== 'deployment.succeeded') return;
+    const payload = event.payload ?? {};
+    const target =
+      typeof payload.target === 'string' ? payload.target : undefined;
+    // target이 명시됐는데 production이 아니면 무시(프리뷰 배포 등)
+    if (target && target !== 'production') return;
+
+    const deployment = (payload.deployment ?? {}) as Record<string, unknown>;
+    const url =
+      typeof deployment.url === 'string'
+        ? deployment.url
+        : typeof payload.url === 'string'
+          ? payload.url
+          : null;
+
+    await this.monitoringRepo.recordContainerEvent({
+      service: 'next',
+      eventType: 'deploy',
+      detail: url ? `vercel:${url}` : 'vercel deploy',
+      occurredAt: new Date(),
+    });
+  }
+
+  /** 최근 변경(재시작/배포) 이벤트 — AI 컨텍스트/타임라인용. */
+  async getRecentContainerEvents(days = 14, limit = 30) {
+    const rows = await this.monitoringRepo.findRecentContainerEvents(
+      days,
+      limit,
+    );
+    return rows.map((r) => ({
+      service: r.service,
+      eventType: r.event_type,
+      detail: r.detail,
+      occurredAt: r.occurred_at,
+    }));
+  }
+
   /** 페이지 로딩 추이(실사용자 RUM). days에 따라 버킷 크기 자동 선택. */
   async getPageLoadSeries(days: number) {
     const safeDays = Math.max(1, Math.min(30, Math.trunc(days)));

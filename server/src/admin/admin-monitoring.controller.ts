@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Get,
   Headers,
+  HttpCode,
   HttpException,
   HttpStatus,
   Post,
@@ -12,10 +13,15 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { AdminGuard } from './admin.guard';
 import { AdminMonitoringService } from './admin-monitoring.service';
 import { DockerStatsService } from './docker-stats.service';
-import { AiDiagnosisService } from './ai-diagnosis.service';
+import {
+  AiDiagnosisService,
+  type AdminRole,
+  type ChatMessage,
+} from './ai-diagnosis.service';
 
 @Controller('api')
 export class AdminMonitoringController {
@@ -62,11 +68,43 @@ export class AdminMonitoringController {
     return this.dockerStats.getContainerHistory(container ?? 'nest');
   }
 
+  // Vercel 배포 성공 웹훅(서명 검증). next(프론트) 배포 시점을 이벤트로 기록.
+  // 관리자 인증 대신 x-vercel-signature(HMAC-SHA1) 로 검증한다.
+  @Post('webhooks/vercel-deploy')
+  @HttpCode(HttpStatus.OK)
+  async vercelDeploy(
+    @Req() req: Request & { rawBody?: Buffer },
+    @Headers('x-vercel-signature') signature: string | undefined,
+    @Body() body: { type?: string; payload?: Record<string, unknown> },
+  ) {
+    const secret = process.env.VERCEL_WEBHOOK_SECRET ?? '';
+    if (!secret) {
+      throw new ForbiddenException('webhook이 구성되지 않았습니다');
+    }
+    if (!verifyVercelSignature(req.rawBody, signature, secret)) {
+      throw new ForbiddenException('서명이 유효하지 않습니다');
+    }
+    await this.monitoring.recordNextDeployFromVercel(body);
+    return { ok: true };
+  }
+
   // 버튼 클릭 시 1회만 호출(비용 통제). 컨테이너 메트릭+EC2 정보를 LLM에 보내 진단.
   @UseGuards(AdminGuard)
   @Get('admin/monitoring/ai-diagnosis')
   getAiDiagnosis() {
     return this.aiDiagnosis.diagnose();
+  }
+
+  // 운영 챗봇. 세션 role(master/guest)을 함께 넘겨 민감 질문은 guest에게 거부 응답.
+  @UseGuards(AdminGuard)
+  @Post('admin/monitoring/ai-chat')
+  aiChat(
+    @Req() req: Request & { adminUser?: { role?: 'master' | 'guest' } },
+    @Body() body: { messages?: ChatMessage[] },
+  ) {
+    const role: AdminRole =
+      req.adminUser?.role === 'master' ? 'master' : 'guest';
+    return this.aiDiagnosis.chat(body?.messages ?? [], role);
   }
 
   @UseGuards(AdminGuard)
@@ -244,4 +282,17 @@ export class AdminMonitoringController {
       );
     }
   }
+}
+
+/** Vercel 웹훅 서명(x-vercel-signature = HMAC-SHA1(rawBody, secret)) 검증. */
+function verifyVercelSignature(
+  rawBody: Buffer | undefined,
+  signature: string | undefined,
+  secret: string,
+): boolean {
+  if (!rawBody || !signature) return false;
+  const expected = createHmac('sha1', secret).update(rawBody).digest('hex');
+  const a = Buffer.from(expected);
+  const b = Buffer.from(signature);
+  return a.length === b.length && timingSafeEqual(a, b);
 }

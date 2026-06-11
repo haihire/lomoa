@@ -17,7 +17,15 @@ async function bootstrap() {
   });
   const bodyLimit = process.env.BODY_LIMIT ?? '50mb';
 
-  app.use(json({ limit: bodyLimit }));
+  // Vercel 웹훅 서명 검증을 위해 원본 바디(rawBody)를 요청 객체에 보존한다.
+  app.use(
+    json({
+      limit: bodyLimit,
+      verify: (req: Request & { rawBody?: Buffer }, _res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
   app.use(urlencoded({ extended: true, limit: bodyLimit }));
 
   // Next.js SSR 서버(localhost:3000)에서의 요청 허용

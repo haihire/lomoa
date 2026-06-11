@@ -211,6 +211,20 @@ export class MonitoringRepository {
     await this.prisma
       .$executeRaw`CREATE INDEX IF NOT EXISTS idx_apm_page_load_timings_source_created_at ON apm_page_load_timings(source, created_at)`;
 
+    // 서비스 변경(재시작/배포) 이벤트 로그. occurred_at=실제 발생시각, detected_at=감지시각.
+    await this.prisma.$executeRaw`
+      CREATE TABLE IF NOT EXISTS container_events (
+        id BIGSERIAL PRIMARY KEY,
+        service VARCHAR(16) NOT NULL,
+        event_type VARCHAR(24) NOT NULL,
+        detail VARCHAR(500),
+        occurred_at TIMESTAMPTZ(6) NOT NULL,
+        detected_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    await this.prisma
+      .$executeRaw`CREATE INDEX IF NOT EXISTS idx_container_events_service_occurred_at ON container_events(service, occurred_at)`;
+
     for (const container of Object.keys(DOCKER_TABLE) as ContainerName[]) {
       await this.prisma.$executeRawUnsafe(`
         CREATE TABLE IF NOT EXISTS docker_metrics_${container} (
@@ -649,6 +663,64 @@ export class MonitoringRepository {
        ORDER BY 1`,
       days,
     );
+  }
+
+  /** 서비스 변경 이벤트 1건 기록. */
+  async recordContainerEvent(input: {
+    service: string;
+    eventType: string;
+    detail: string | null;
+    occurredAt: Date;
+  }): Promise<void> {
+    await this.prisma.$executeRaw`
+      INSERT INTO container_events (service, event_type, detail, occurred_at, detected_at)
+      VALUES (
+        ${input.service},
+        ${input.eventType},
+        ${input.detail},
+        ${input.occurredAt},
+        NOW()
+      )
+    `;
+  }
+
+  /** 특정 서비스의 가장 최근 이벤트 occurred_at (없으면 null). 중복 감지 방지용. */
+  async findLatestEventOccurredAt(service: string): Promise<Date | null> {
+    const rows = await this.prisma.$queryRaw<Array<{ occurred_at: Date }>>`
+      SELECT occurred_at FROM container_events
+      WHERE service = ${service}
+      ORDER BY occurred_at DESC
+      LIMIT 1
+    `;
+    return rows[0]?.occurred_at ?? null;
+  }
+
+  /** 최근 N일 변경 이벤트 (최신순). */
+  async findRecentContainerEvents(
+    days: number,
+    limit: number,
+  ): Promise<
+    Array<{
+      service: string;
+      event_type: string;
+      detail: string | null;
+      occurred_at: Date;
+    }>
+  > {
+    return this.prisma.$queryRaw<
+      Array<{
+        service: string;
+        event_type: string;
+        detail: string | null;
+        occurred_at: Date;
+      }>
+    >`
+      SELECT service, event_type, detail, occurred_at
+      FROM container_events
+      WHERE occurred_at >= NOW() - (${days}::int * INTERVAL '1 day')
+      ORDER BY occurred_at DESC
+      LIMIT ${limit}
+    `;
   }
 
   async deleteDockerMetricsOlderThan(

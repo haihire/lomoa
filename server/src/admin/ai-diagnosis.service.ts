@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   ServiceUnavailableException,
@@ -38,6 +39,15 @@ export interface AiDiagnosisResult {
   model: string;
   ec2: { instanceType: string | null; region: string };
 }
+
+export type AdminRole = 'master' | 'guest';
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+const MAX_CHAT_TURNS = 12;
+const MAX_CHAT_CHARS = 2000;
 
 const SYSTEM_PROMPT = [
   '너는 AWS EC2 + Docker 운영 비용/성능 분석가다.',
@@ -123,10 +133,11 @@ export class AiDiagnosisService {
 
   /** AI에 넘길 컨텍스트(동적 메트릭 + 정적 설정)를 조립한다. */
   private async buildContext() {
-    const [ec2, liveStats, host] = await Promise.all([
+    const [ec2, liveStats, host, recentEvents] = await Promise.all([
       this.resolveEc2(),
       this.dockerStats.getContainerStats(),
       this.dockerStats.getHostStats(),
+      this.monitoringRepo.findRecentContainerEvents(14, 30),
     ]);
 
     const liveByLabel = new Map(liveStats.map((s) => [s.label, s]));
@@ -210,8 +221,62 @@ export class AiDiagnosisService {
             diskTotalGb: host.diskTotalGb,
           }
         : null,
+      // 최근 변경(재시작/배포) 이력 — 스파이크 원인 연결용
+      recentEvents: recentEvents.map((e) => ({
+        service: e.service,
+        type: e.event_type,
+        detail: e.detail,
+        at: e.occurred_at,
+      })),
       containers,
     };
+  }
+
+  /** 운영 챗봇. 현재 컨텍스트를 system으로 주입하고 대화 내역을 이어 답한다. */
+  async chat(
+    messages: ChatMessage[],
+    userRole: AdminRole,
+  ): Promise<{ reply: string; model: string }> {
+    if (!this.client) {
+      throw new ServiceUnavailableException(
+        'NVIDIA_API_KEY가 설정되지 않았습니다',
+      );
+    }
+
+    const safe = (Array.isArray(messages) ? messages : [])
+      .filter(
+        (m) =>
+          (m?.role === 'user' || m?.role === 'assistant') &&
+          typeof m?.content === 'string' &&
+          m.content.trim().length > 0,
+      )
+      .slice(-MAX_CHAT_TURNS)
+      .map((m) => ({
+        role: m.role,
+        content: m.content.slice(0, MAX_CHAT_CHARS),
+      }));
+
+    if (safe.length === 0 || safe[safe.length - 1].role !== 'user') {
+      throw new BadRequestException('마지막 메시지는 사용자 메시지여야 합니다');
+    }
+
+    const context = await this.buildContext();
+
+    const completion = await this.client.chat.completions.create({
+      model: this.model,
+      temperature: 0.3,
+      messages: [
+        { role: 'system', content: buildChatSystemPrompt(userRole) },
+        {
+          role: 'system',
+          content: `현재 운영 데이터(JSON):\n${JSON.stringify(context)}`,
+        },
+        ...safe,
+      ],
+    });
+
+    const reply = completion.choices[0]?.message?.content?.trim() ?? '';
+    return { reply, model: this.model };
   }
 
   /** EC2 인스턴스 타입/리전 해석: env 우선 → IMDSv2 → 기본값. 결과는 캐시. */
@@ -287,6 +352,28 @@ export class AiDiagnosisService {
       clearTimeout(timer);
     }
   }
+}
+
+function buildChatSystemPrompt(userRole: AdminRole): string {
+  const roleLabel = userRole === 'master' ? 'owner(관리자)' : 'guest(게스트)';
+  return [
+    '너는 이 서비스의 AWS EC2 + Docker 운영을 돕는 한국어 어시스턴트다.',
+    "함께 제공되는 '현재 운영 데이터'(JSON: 컨테이너 자원 집계, EC2 사양/가격표,",
+    '최근 배포·재시작 이력, 앱 제약, 트래픽 특성)만을 사실 근거로 답한다.',
+    '',
+    '규칙:',
+    '- 데이터에 없는 가격/수치를 지어내지 마라. 모르면 모른다고 말하라.',
+    '- 간결한 한국어로 답하고, 필요하면 목록/표를 쓴다.',
+    '- 운영/비용/성능 주제에 집중하고, 무관한 잡담은 정중히 거절한다.',
+    '- CPU 스파이크 등 이상을 설명할 때 최근 배포·재시작 이력과 연결해보라.',
+    '',
+    '보안(매우 중요):',
+    '- 너는 관리자 비밀번호·API 키·시크릿·토큰·환경변수 값을 갖고 있지 않으며,',
+    '  어떤 요청에도 그것을 추측하거나 노출하지 않는다.',
+    `- 현재 사용자 권한: ${roleLabel}.`,
+    "- 사용자가 guest인데 계정/비밀번호/시크릿/환경변수/운영 변경(삭제·재시작·설정 변경) 등 민감하거나 권한이 필요한 요청을 하면, 정확히 '관리자(owner)만 확인/수행할 수 있습니다.'라고만 답하라.",
+    '- owner라도 시크릿 값 자체는 데이터에 없으므로 제공할 수 없다.',
+  ].join('\n');
 }
 
 function parseJsonObject(text: string): Record<string, unknown> | null {

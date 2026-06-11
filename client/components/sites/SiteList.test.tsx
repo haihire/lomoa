@@ -10,14 +10,12 @@ const MOCK_SITES: Site[] = [
     href: "https://lostark.game.onstove.com",
     category: "공식",
     description: "공식 홈페이지",
-    icon: undefined,
   },
   {
     name: "로아인벤",
     href: "https://lostark.inven.co.kr",
     category: "커뮤니티",
     description: "인벤 커뮤니티",
-    icon: "https://example.com/icon.png",
   },
 ];
 
@@ -73,15 +71,19 @@ describe("SiteList", () => {
     expect(screen.getByText("인벤 커뮤니티")).toBeInTheDocument();
   });
 
-  it("icon이 지정된 사이트는 해당 icon이 사용된다", () => {
+  it("파비콘은 site.icon이 아니라 href 도메인 기반 구글 파비콘으로 렌더링된다", () => {
     const { container } = render(<SiteList sites={[MOCK_SITES[1]]} />);
 
     const img = container.querySelector("img");
     expect(img).not.toBeNull();
-    expect(img).toHaveAttribute("src", "https://example.com/icon.png");
+    // site.icon("https://example.com/icon.png")이 아니라 href 도메인에서 파생
+    expect(img).toHaveAttribute(
+      "src",
+      "https://www.google.com/s2/favicons?domain=lostark.inven.co.kr&sz=32",
+    );
   });
 
-  it("icon이 없는 사이트는 href 기반 favicon이 표시된다", () => {
+  it("site.icon이 없어도 href 도메인으로 파비콘이 렌더링된다", () => {
     const { container } = render(<SiteList sites={[MOCK_SITES[0]]} />);
 
     const img = container.querySelector("img");

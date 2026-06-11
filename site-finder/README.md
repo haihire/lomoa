@@ -24,28 +24,13 @@ crawl.py (Python)            Nest (AdminInvenPipelineService)
 
 ## 대상 게시판
 
-| key | 이름 | board id | URL |
-|---|---|---|---|
-| free | 자유게시판 | 6271 | https://www.inven.co.kr/board/lostark/6271 |
-| tip | 팁과노하우 | 4821 | https://www.inven.co.kr/board/lostark/4821 |
+| key  | 이름       | board id | URL                                        |
+| ---- | ---------- | -------- | ------------------------------------------ |
+| free | 자유게시판 | 6271     | https://www.inven.co.kr/board/lostark/6271 |
+| tip  | 팁과노하우 | 4821     | https://www.inven.co.kr/board/lostark/4821 |
 
 > ⚠️ 데스크톱(www) 정상 작동. **잘못된 board id면 모바일 검색으로 JS 리다이렉트**되어 0개 파싱됨.
 > curl_cffi `impersonate="chrome"` 필수 (없으면 봇 차단).
-
-## crawl.py 직접 실행 (디버그)
-
-```powershell
-pip install -r site-finder/requirements.txt
-
-python site-finder/crawl.py --date 2026-06-01   # 특정 날짜 (기본: 어제) → stdout JSON
-python site-finder/crawl.py --save-file         # output/ 에도 저장
-python site-finder/crawl.py --debug             # 파싱 실패 시 raw HTML 저장
-```
-
-- 출력: `{"target_date": "...", "posts": [...]}` (stdout). 로그는 stderr로 분리.
-- 페이지네이션은 **target_date보다 오래된 글이 나오면 자동 중단** (페이지 수 제한 없음).
-
-평소엔 직접 실행할 필요 없음 — 관리자 페이지 「수집 실행」 또는 새벽 크론이 호출한다.
 
 ## 사이트 추출 로직 (Nest `SiteExtractorService`)
 

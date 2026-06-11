@@ -17,7 +17,7 @@ jobs:
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
           REPO: ${{ github.repository }}
         run: |
-          parent_branches="main ci/cd feat/admin feat/mainPage fix/admin fix/mainPage"
+          parent_branches="main admin mainPage etc"
           for branch in $parent_branches; do
             if [ "$HEAD_BRANCH" = "$branch" ]; then
               echo "$HEAD_BRANCH is a parent branch, skipping deletion."

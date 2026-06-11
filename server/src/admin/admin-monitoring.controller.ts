@@ -15,6 +15,7 @@ import type { Request } from 'express';
 import { AdminGuard } from './admin.guard';
 import { AdminMonitoringService } from './admin-monitoring.service';
 import { DockerStatsService } from './docker-stats.service';
+import { AiDiagnosisService } from './ai-diagnosis.service';
 
 @Controller('api')
 export class AdminMonitoringController {
@@ -27,6 +28,7 @@ export class AdminMonitoringController {
   constructor(
     private readonly monitoring: AdminMonitoringService,
     private readonly dockerStats: DockerStatsService,
+    private readonly aiDiagnosis: AiDiagnosisService,
   ) {}
 
   @UseGuards(AdminGuard)
@@ -58,6 +60,13 @@ export class AdminMonitoringController {
   @Get('admin/monitoring/container-history')
   containerHistory(@Query('container') container?: string) {
     return this.dockerStats.getContainerHistory(container ?? 'nest');
+  }
+
+  // 버튼 클릭 시 1회만 호출(비용 통제). 컨테이너 메트릭+EC2 정보를 LLM에 보내 진단.
+  @UseGuards(AdminGuard)
+  @Get('admin/monitoring/ai-diagnosis')
+  getAiDiagnosis() {
+    return this.aiDiagnosis.diagnose();
   }
 
   @UseGuards(AdminGuard)

@@ -9,6 +9,7 @@ import { SitesModule } from '../sites/sites.module';
 import { AdminMonitoringController } from './admin-monitoring.controller';
 import { AdminMonitoringService } from './admin-monitoring.service';
 import { DockerStatsService } from './docker-stats.service';
+import { AiDiagnosisService } from './ai-diagnosis.service';
 import { MonitoringRepository } from './repositories/monitoring.repository';
 import { AdminAuthRepository } from './repositories/admin-auth.repository';
 import { AdminCharactersRepository } from './repositories/admin-characters.repository';
@@ -35,6 +36,7 @@ import { SiteSuggestService } from './site-suggest.service';
     AdminWriteGuard,
     AdminMonitoringService,
     DockerStatsService,
+    AiDiagnosisService,
     MonitoringRepository,
     AdminAuthRepository,
     AdminCharactersRepository,

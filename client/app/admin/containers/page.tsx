@@ -18,8 +18,6 @@ interface ContainerStat {
   memUsedMb: number;
   memTotalMb: number;
   memPercent: number;
-  netInMb: number;
-  netOutMb: number;
 }
 
 interface ContainerStatus {
@@ -51,6 +49,15 @@ interface ContainersResponse {
   containers: ContainerStat[];
   host: HostStats | null;
   statuses: ContainerStatus[];
+}
+
+interface AiDiagnosis {
+  summary: string;
+  anomalies: string[];
+  costSuggestions: string[];
+  generatedAt: string;
+  model: string;
+  ec2: { instanceType: string | null; region: string };
 }
 
 // 카드 정렬 순서 (서비스 의존도 순)
@@ -131,6 +138,34 @@ export default function ContainersPage() {
   >(containerHistoryCache["nest"] ?? []);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [activeChart, setActiveChart] = useState<string | null>(null);
+
+  const [aiResult, setAiResult] = useState<AiDiagnosis | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+
+  async function runDiagnosis() {
+    setAiLoading(true);
+    setAiError("");
+    try {
+      const res = await fetch("/api/admin/monitoring/ai-diagnosis", {
+        cache: "no-store",
+      });
+      const data = (await res.json().catch(() => ({}))) as
+        | AiDiagnosis
+        | { message?: string };
+      if (!res.ok) {
+        setAiError(
+          ("message" in data && data.message) || "AI 진단에 실패했습니다.",
+        );
+        return;
+      }
+      setAiResult(data as AiDiagnosis);
+    } catch {
+      setAiError("AI 진단 요청 중 오류가 발생했습니다.");
+    } finally {
+      setAiLoading(false);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -364,9 +399,6 @@ export default function ContainersPage() {
                           {stat.memUsedMb}MB / {stat.memTotalMb}MB
                         </p>
                       </div>
-                      <p className="text-[11px] text-[color:var(--admin-text-muted)] tabular-nums">
-                        NET ↓{stat.netInMb}MB · ↑{stat.netOutMb}MB
-                      </p>
                     </div>
                   ) : (
                     <p className="text-[11px] text-[color:var(--admin-text-subtle)]">
@@ -489,6 +521,94 @@ export default function ContainersPage() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* AI 진단 */}
+          <div className="admin-card p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold">AI 진단</p>
+                <p className="mt-0.5 text-[11px] text-[color:var(--admin-text-muted)]">
+                  최근 7일 자원 사용량 + EC2 정보를 바탕으로 현황·이상 징후·비용
+                  절감을 분석합니다.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={runDiagnosis}
+                disabled={aiLoading}
+                className="admin-btn admin-btn-primary admin-btn-sm shrink-0"
+              >
+                {aiLoading ? "분석 중..." : "AI 진단 실행"}
+              </button>
+            </div>
+
+            {aiError && (
+              <p className="text-sm text-red-500">{aiError}</p>
+            )}
+
+            {!aiError && !aiResult && !aiLoading && (
+              <p className="text-sm text-[color:var(--admin-text-muted)]">
+                버튼을 눌러 진단을 시작하세요.
+              </p>
+            )}
+
+            {aiResult && (
+              <div className="space-y-4">
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-[color:var(--admin-text-muted)]">
+                    현황 요약
+                  </p>
+                  <p className="text-sm whitespace-pre-wrap">
+                    {aiResult.summary || "—"}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-[color:var(--admin-text-muted)]">
+                    이상 징후
+                  </p>
+                  {aiResult.anomalies.length === 0 ? (
+                    <p className="text-sm text-[color:var(--admin-text-muted)]">
+                      특이사항 없음
+                    </p>
+                  ) : (
+                    <ul className="list-disc space-y-1 pl-5 text-sm">
+                      {aiResult.anomalies.map((a, i) => (
+                        <li key={i}>{a}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-[color:var(--admin-text-muted)]">
+                    비용 절감 제안
+                  </p>
+                  {aiResult.costSuggestions.length === 0 ? (
+                    <p className="text-sm text-[color:var(--admin-text-muted)]">
+                      제안 없음
+                    </p>
+                  ) : (
+                    <ul className="list-disc space-y-1 pl-5 text-sm">
+                      {aiResult.costSuggestions.map((s, i) => (
+                        <li key={i}>{s}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <p className="text-[11px] text-[color:var(--admin-text-subtle)]">
+                  {aiResult.ec2.instanceType
+                    ? `${aiResult.ec2.instanceType} · ${aiResult.ec2.region}`
+                    : "EC2 정보 없음(로컬/IMDS 미가용)"}{" "}
+                  · {aiResult.model} ·{" "}
+                  {new Date(aiResult.generatedAt).toLocaleString("ko-KR", {
+                    hour12: false,
+                  })}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -4,8 +4,10 @@ import { AdminAuthController } from './admin-auth.controller';
 import { AdminSitesController } from './admin-sites.controller';
 import { AdminCacheController } from './admin-cache.controller';
 import { AdminCharactersController } from './admin-characters.controller';
+import { AdminYoutubeController } from './admin-youtube.controller';
 import { AdminGuard, AdminWriteGuard } from './admin.guard';
 import { SitesModule } from '../sites/sites.module';
+import { StreamersModule } from '../streamers/streamers.module';
 import { AdminMonitoringController } from './admin-monitoring.controller';
 import { AdminMonitoringService } from './admin-monitoring.service';
 import { DockerStatsService } from './docker-stats.service';
@@ -21,12 +23,13 @@ import { SiteExtractorService } from './site-extractor.service';
 import { SiteSuggestService } from './site-suggest.service';
 
 @Module({
-  imports: [SitesModule],
+  imports: [SitesModule, StreamersModule],
   controllers: [
     AdminAuthController,
     AdminSitesController,
     AdminCacheController,
     AdminCharactersController,
+    AdminYoutubeController,
     AdminMonitoringController,
     AdminInvenController,
   ],

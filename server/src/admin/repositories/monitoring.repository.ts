@@ -70,6 +70,23 @@ export interface ContainerHistoryRow {
   avg_mem_used_mb: number;
 }
 
+export interface ContainerAggregateRow {
+  avg_cpu: number;
+  max_cpu: number;
+  min_cpu: number;
+  p95_cpu: number;
+  avg_mem_pct: number;
+  peak_mem_pct: number;
+  peak_mem_used_mb: number;
+  sample_count: number;
+}
+
+export interface ContainerHourlyCpuRow {
+  hour: number;
+  avg_cpu: number;
+  max_cpu: number;
+}
+
 @Injectable()
 export class MonitoringRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -193,6 +210,20 @@ export class MonitoringRepository {
       .$executeRaw`CREATE INDEX IF NOT EXISTS idx_apm_page_load_timings_created_at ON apm_page_load_timings(created_at)`;
     await this.prisma
       .$executeRaw`CREATE INDEX IF NOT EXISTS idx_apm_page_load_timings_source_created_at ON apm_page_load_timings(source, created_at)`;
+
+    // 서비스 변경(재시작/배포) 이벤트 로그. occurred_at=실제 발생시각, detected_at=감지시각.
+    await this.prisma.$executeRaw`
+      CREATE TABLE IF NOT EXISTS container_events (
+        id BIGSERIAL PRIMARY KEY,
+        service VARCHAR(16) NOT NULL,
+        event_type VARCHAR(24) NOT NULL,
+        detail VARCHAR(500),
+        occurred_at TIMESTAMPTZ(6) NOT NULL,
+        detected_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+    await this.prisma
+      .$executeRaw`CREATE INDEX IF NOT EXISTS idx_container_events_service_occurred_at ON container_events(service, occurred_at)`;
 
     for (const container of Object.keys(DOCKER_TABLE) as ContainerName[]) {
       await this.prisma.$executeRawUnsafe(`
@@ -589,6 +620,96 @@ export class MonitoringRepository {
        ORDER BY DATE_TRUNC('hour', created_at) ASC`,
       days,
     );
+  }
+
+  /** 기간 내 컨테이너 CPU/MEM 집계(평균/최대/최소/p95, 메모리 피크). */
+  async findContainerAggregate(
+    container: ContainerName,
+    days: number,
+  ): Promise<ContainerAggregateRow | undefined> {
+    const table = DOCKER_TABLE[container];
+    const rows = await this.prisma.$queryRawUnsafe<ContainerAggregateRow[]>(
+      `SELECT
+         ROUND(AVG(cpu_percent)::numeric, 2)::float AS avg_cpu,
+         ROUND(MAX(cpu_percent)::numeric, 2)::float AS max_cpu,
+         ROUND(MIN(cpu_percent)::numeric, 2)::float AS min_cpu,
+         ROUND(
+           PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY cpu_percent)::numeric, 2
+         )::float AS p95_cpu,
+         ROUND(AVG(mem_percent)::numeric, 2)::float AS avg_mem_pct,
+         ROUND(MAX(mem_percent)::numeric, 2)::float AS peak_mem_pct,
+         MAX(mem_used_mb)::int AS peak_mem_used_mb,
+         COUNT(*)::int AS sample_count
+       FROM ${table}
+       WHERE created_at >= NOW() - ($1::int * INTERVAL '1 day')`,
+      days,
+    );
+    return rows[0];
+  }
+
+  /** 시간대(0~23시, 한국시간)별 평균/최대 CPU — 특정 시간대 스파이크 탐지용. */
+  async findContainerHourlyCpu(
+    container: ContainerName,
+    days: number,
+  ): Promise<ContainerHourlyCpuRow[]> {
+    const table = DOCKER_TABLE[container];
+    return this.prisma.$queryRawUnsafe<ContainerHourlyCpuRow[]>(
+      `SELECT EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Seoul')::int AS hour,
+              ROUND(AVG(cpu_percent)::numeric, 2)::float AS avg_cpu,
+              ROUND(MAX(cpu_percent)::numeric, 2)::float AS max_cpu
+       FROM ${table}
+       WHERE created_at >= NOW() - ($1::int * INTERVAL '1 day')
+       GROUP BY 1
+       ORDER BY 1`,
+      days,
+    );
+  }
+
+  /** 서비스 변경 이벤트 1건 기록. */
+  async recordContainerEvent(input: {
+    service: string;
+    eventType: string;
+    detail: string | null;
+    occurredAt: Date;
+  }): Promise<void> {
+    await this.prisma.$executeRaw`
+      INSERT INTO container_events (service, event_type, detail, occurred_at, detected_at)
+      VALUES (
+        ${input.service},
+        ${input.eventType},
+        ${input.detail},
+        ${input.occurredAt},
+        NOW()
+      )
+    `;
+  }
+
+  /** 최근 N일 변경 이벤트 (최신순). */
+  async findRecentContainerEvents(
+    days: number,
+    limit: number,
+  ): Promise<
+    Array<{
+      service: string;
+      event_type: string;
+      detail: string | null;
+      occurred_at: Date;
+    }>
+  > {
+    return this.prisma.$queryRaw<
+      Array<{
+        service: string;
+        event_type: string;
+        detail: string | null;
+        occurred_at: Date;
+      }>
+    >`
+      SELECT service, event_type, detail, occurred_at
+      FROM container_events
+      WHERE occurred_at >= NOW() - (${days}::int * INTERVAL '1 day')
+      ORDER BY occurred_at DESC
+      LIMIT ${limit}
+    `;
   }
 
   async deleteDockerMetricsOlderThan(

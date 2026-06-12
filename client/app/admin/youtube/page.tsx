@@ -180,8 +180,8 @@ export default function AdminYoutubePage() {
   }, []);
 
   async function handleBlock(videoId: string, title: string) {
-    if (!requireMaster("영상 숨김")) return;
-    if (!window.confirm(`이 영상을 인기 목록에서 숨길까요?\n\n${title}`)) return;
+    if (!requireMaster("영상 삭제")) return;
+    if (!window.confirm(`이 영상을 인기 목록에서 삭제할까요?\n\n${title}`)) return;
     setBusyId(videoId);
     try {
       const res = await fetch("/api/admin/youtube/block", {
@@ -195,7 +195,7 @@ export default function AdminYoutubePage() {
           prev.includes(videoId) ? prev : [...prev, videoId],
         );
       } else {
-        alert("영상 숨김 처리에 실패했습니다.");
+        alert("영상 삭제에 실패했습니다.");
       }
     } catch {
       alert("네트워크 오류가 발생했습니다.");
@@ -205,7 +205,7 @@ export default function AdminYoutubePage() {
   }
 
   async function handleUnblock(videoId: string) {
-    if (!requireMaster("숨김 해제")) return;
+    if (!requireMaster("삭제 되돌리기")) return;
     setBusyId(videoId);
     try {
       const res = await fetch("/api/admin/youtube/unblock", {
@@ -215,9 +215,9 @@ export default function AdminYoutubePage() {
       });
       if (res.ok) {
         setBlockedIds((prev) => prev.filter((id) => id !== videoId));
-        await load(); // 복원된 영상이 목록에 다시 나타나도록 갱신
+        await load(); // 되돌린 영상이 목록에 다시 나타나도록 갱신
       } else {
-        alert("숨김 해제에 실패했습니다.");
+        alert("되돌리기에 실패했습니다.");
       }
     } catch {
       alert("네트워크 오류가 발생했습니다.");
@@ -342,7 +342,7 @@ export default function AdminYoutubePage() {
             onClick={() => setShowBlocked((v) => !v)}
             className="admin-btn admin-btn-secondary"
           >
-            숨김 {blockedIds.length}
+            삭제됨 {blockedIds.length}
           </button>
           <button
             onClick={handlePurge}
@@ -378,15 +378,15 @@ export default function AdminYoutubePage() {
         </div>
       </div>
 
-      {/* 숨김 관리 패널 */}
+      {/* 삭제 관리 패널 */}
       {showBlocked && (
         <div className="admin-card admin-card-padded mb-4 shrink-0">
           <p className="text-xs font-semibold text-[color:var(--admin-text-muted)] mb-2 uppercase tracking-wide">
-            숨긴 영상 ({blockedIds.length})
+            삭제한 영상 ({blockedIds.length})
           </p>
           {blockedIds.length === 0 ? (
             <p className="text-xs text-[color:var(--admin-text-subtle)]">
-              숨긴 영상이 없습니다.
+              삭제한 영상이 없습니다.
             </p>
           ) : (
             <ul className="flex flex-col gap-1 max-h-40 overflow-y-auto">
@@ -405,7 +405,7 @@ export default function AdminYoutubePage() {
                     disabled={busyId === id}
                     className="admin-btn admin-btn-sm admin-btn-secondary shrink-0"
                   >
-                    복원
+                    되돌리기
                   </button>
                 </li>
               ))}
@@ -470,7 +470,7 @@ export default function AdminYoutubePage() {
                     <button
                       onClick={() => void handleBlock(v.videoId, v.title)}
                       disabled={busyId === v.videoId}
-                      title="목록에서 숨기기"
+                      title="목록에서 삭제"
                       className="admin-btn admin-btn-sm admin-btn-secondary mr-3 shrink-0 text-red-600 disabled:opacity-50"
                     >
                       {busyId === v.videoId ? "..." : "삭제"}

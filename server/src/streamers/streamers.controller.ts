@@ -19,7 +19,9 @@ export class StreamersController {
    * 로스트아크 최근 7일 동영상 게시일순 (Redis 4시간 캐시)
    */
   @Get('popular')
-  @Header('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=300')
+  // s-maxage 5분 — 관리자 삭제(숨김)가 홈/CDN에 빨리 반영되도록.
+  // admin은 캐시버스터로 즉시 갱신되므로 영향 없음.
+  @Header('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=300')
   searchPopular(
     @Query('offset') offsetRaw?: string,
     @Query('limit') limitRaw?: string,

@@ -131,11 +131,8 @@ export class SiteExtractorService {
     >();
 
     for (const post of posts) {
-      const texts = [post.content ?? ''];
-      for (const c of post.comments ?? []) {
-        if (c && typeof c.text === 'string') texts.push(c.text);
-      }
-      const blob = texts.join(' ');
+      // 본문만 스캔 (댓글은 더 이상 수집하지 않음)
+      const blob = post.content ?? '';
       const matches = blob.match(URL_RE) ?? [];
 
       for (const match of matches) {

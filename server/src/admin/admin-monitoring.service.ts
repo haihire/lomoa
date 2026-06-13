@@ -268,32 +268,33 @@ export class AdminMonitoringService implements OnModuleInit {
             : safeRangeDays === 10
               ? 12
               : 30;
-    const summary = await this.monitoringRepo.findSummary(
-      this.SLOW_THRESHOLD_MS,
-    );
-
-    const siteClickSeriesRows =
-      await this.monitoringRepo.findSiteClickSeriesDays(14);
-
-    const youtubeClickSeriesRows =
-      await this.monitoringRepo.findYoutubeClickSeriesDays(14);
-
-    const sectionSeries = await this.monitoringRepo.findSectionSeries(
-      bucketHours,
-      safeRangeDays,
-    );
-
-    const visitRows = await this.monitoringRepo.findPageVisits();
-    const countryRows = await this.monitoringRepo.findCountryVisits();
-    const osRows = await this.monitoringRepo.findOsVisits();
-    const browserRows = await this.monitoringRepo.findBrowserVisits();
-
-    const siteClickRows = await this.monitoringRepo.findSiteClicks();
     const safePvDays = Math.max(1, Math.min(30, Math.trunc(pvDays)));
-    const [pageVisitSeriesRows, youtubeClickTotal] = await Promise.all([
+    // 서로 의존 없는 조회들은 병렬로(Promise.all) 실행 → 대시보드 로딩 = 가장 느린 1개 수준.
+    const [
+      summary,
+      siteClickSeriesRows,
+      youtubeClickSeriesRows,
+      sectionSeries,
+      visitRows,
+      dimensionRows,
+      siteClickRows,
+      pageVisitSeriesRows,
+      youtubeClickTotal,
+    ] = await Promise.all([
+      this.monitoringRepo.findSummary(this.SLOW_THRESHOLD_MS),
+      this.monitoringRepo.findSiteClickSeriesDays(14),
+      this.monitoringRepo.findYoutubeClickSeriesDays(14),
+      this.monitoringRepo.findSectionSeries(bucketHours, safeRangeDays),
+      this.monitoringRepo.findPageVisits(),
+      this.monitoringRepo.findDimensionVisits(),
+      this.monitoringRepo.findSiteClicks(),
       this.monitoringRepo.findPageVisitSeriesDays(safePvDays),
       this.monitoringRepo.findYoutubeClickTotal(),
     ]);
+    // 한 번의 왕복으로 받은 차원 데이터를 국가/OS/브라우저로 분리.
+    const countryRows = dimensionRows.filter((r) => r.dim === 'country');
+    const osRows = dimensionRows.filter((r) => r.dim === 'os');
+    const browserRows = dimensionRows.filter((r) => r.dim === 'browser');
 
     return {
       summary: {

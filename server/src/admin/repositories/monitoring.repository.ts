@@ -622,14 +622,15 @@ export class MonitoringRepository {
   ): Promise<ContainerHistoryRow[]> {
     const table = DOCKER_TABLE[container];
     return this.prisma.$queryRawUnsafe<ContainerHistoryRow[]>(
-      `SELECT TO_CHAR(DATE_TRUNC('hour', created_at), 'MM-DD HH24:MI') AS bucket,
+      // 버킷/라벨은 한국시간(KST) 기준 — 그래프 시각이 운영자 기준과 일치하도록.
+      `SELECT TO_CHAR(DATE_TRUNC('hour', created_at AT TIME ZONE 'Asia/Seoul'), 'MM-DD HH24:MI') AS bucket,
               ROUND(AVG(cpu_percent)::numeric, 2)::float AS avg_cpu,
               ROUND(AVG(mem_percent)::numeric, 2)::float AS avg_mem,
               ROUND(AVG(mem_used_mb))::int AS avg_mem_used_mb
        FROM ${table}
        WHERE created_at >= NOW() - ($1::int * INTERVAL '1 day')
-       GROUP BY DATE_TRUNC('hour', created_at)
-       ORDER BY DATE_TRUNC('hour', created_at) ASC`,
+       GROUP BY DATE_TRUNC('hour', created_at AT TIME ZONE 'Asia/Seoul')
+       ORDER BY DATE_TRUNC('hour', created_at AT TIME ZONE 'Asia/Seoul') ASC`,
       days,
     );
   }
@@ -819,7 +820,6 @@ export class MonitoringRepository {
     );
     return deleted.length;
   }
-
 }
 
 function sleep(ms: number) {

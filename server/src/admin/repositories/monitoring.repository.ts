@@ -138,8 +138,11 @@ export class MonitoringRepository {
     `;
     // 일별 방문 추이 뷰: apm_page_visits를 visit_day로 합산해 날짜별 집계를 바로 조회(pgAdmin 등).
     // 별도 저장/동기화 없이 항상 최신. SELECT * FROM apm_page_visit_daily;
+    // 컬럼 구성이 바뀌어도 startup이 깨지지 않도록 DROP 후 재생성
+    // (CREATE OR REPLACE VIEW는 컬럼 추가/삭제/순서변경 시 에러로 기동 실패할 수 있음).
+    await this.prisma.$executeRaw`DROP VIEW IF EXISTS apm_page_visit_daily`;
     await this.prisma.$executeRaw`
-      CREATE OR REPLACE VIEW apm_page_visit_daily AS
+      CREATE VIEW apm_page_visit_daily AS
       SELECT visit_day,
              SUM(visits)                                        AS total,
              SUM(visits) FILTER (WHERE device_type = 'desktop') AS desktop,
@@ -464,21 +467,23 @@ export class MonitoringRepository {
   }
 
   async findPageVisitSeriesDays(days: number) {
-    // 일별 방문 추이: 날짜축(generate_series)에 apm_page_visit_daily 뷰를 LEFT JOIN.
-    //   - 합계는 뷰(visit_day별 visits 합)에서 와서 pgAdmin 값과 일치.
+    // 일별 방문 추이: 날짜축(generate_series)에 apm_page_visits를 직접 LEFT JOIN + GROUP BY.
+    //   - 최근 days 기간의 행만 조인/집계 → 뷰 전체 집계(풀스캔) 회피, 테이블이 커져도 효율적.
+    //   - 값은 SUM(visits)로 pgAdmin 뷰(apm_page_visit_daily)와 동일.
     //   - 방문 0인 날(오늘 포함)도 COALESCE로 0을 채워 그래프가 끊기지 않음.
     //   - 일자 경계는 한국시간(Asia/Seoul) 기준 — 최근 days일까지.
     return this.prisma.$queryRaw<
       Array<{ bucket: string; count: bigint | number }>
     >`
       SELECT TO_CHAR(d.day, 'MM-DD') AS bucket,
-             COALESCE(v.total, 0) AS count
+             COALESCE(SUM(p.visits), 0) AS count
       FROM generate_series(
              ((NOW() AT TIME ZONE 'Asia/Seoul')::date - ((${days}::int - 1) * INTERVAL '1 day'))::date,
              (NOW() AT TIME ZONE 'Asia/Seoul')::date,
              INTERVAL '1 day'
            ) AS d(day)
-      LEFT JOIN apm_page_visit_daily v ON v.visit_day = d.day
+      LEFT JOIN apm_page_visits p ON p.visit_day = d.day
+      GROUP BY d.day
       ORDER BY d.day ASC
     `;
   }
@@ -579,19 +584,26 @@ export class MonitoringRepository {
 
   /**
    * 국가/OS/브라우저별 방문 합계(각 차원 상위 20)를 한 번의 왕복으로 조회.
-   * 세 차원을 UNION ALL로 모으고 차원별 ROW_NUMBER로 상위 20만 남김 — 집계는 DB가 수행.
+   * GROUPING SETS로 테이블을 단 한 번만 스캔해 세 차원을 동시 집계하고,
+   * 차원별 ROW_NUMBER로 상위 20만 남김 — 집계는 DB가 수행. (해당 컬럼들은 NOT NULL이라 GROUPING() 판별이 안전)
    */
   async findDimensionVisits(): Promise<DimensionVisitRow[]> {
     return this.prisma.$queryRaw<DimensionVisitRow[]>`
       WITH agg AS (
-        SELECT 'country' AS dim, country_code AS name, SUM(visits) AS count
-        FROM apm_page_visits GROUP BY country_code
-        UNION ALL
-        SELECT 'os' AS dim, os_name AS name, SUM(visits) AS count
-        FROM apm_page_visits GROUP BY os_name
-        UNION ALL
-        SELECT 'browser' AS dim, browser_name AS name, SUM(visits) AS count
-        FROM apm_page_visits GROUP BY browser_name
+        SELECT
+          CASE
+            WHEN GROUPING(country_code) = 0 THEN 'country'
+            WHEN GROUPING(os_name) = 0 THEN 'os'
+            ELSE 'browser'
+          END AS dim,
+          CASE
+            WHEN GROUPING(country_code) = 0 THEN country_code
+            WHEN GROUPING(os_name) = 0 THEN os_name
+            ELSE browser_name
+          END AS name,
+          SUM(visits) AS count
+        FROM apm_page_visits
+        GROUP BY GROUPING SETS ((country_code), (os_name), (browser_name))
       ),
       ranked AS (
         SELECT dim, name, count,

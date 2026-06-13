@@ -500,7 +500,7 @@ export class MonitoringRepository {
           t.api_key,
           r.duration_ms
         FROM apm_request_timings r
-        JOIN targets t ON t.path = r.path
+        JOIN targets t ON t.path = r.name
         WHERE r.scope = 'route'
           AND r.created_at >= NOW() - (${rangeDays}::int * INTERVAL '1 day')
       ),

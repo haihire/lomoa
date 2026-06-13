@@ -33,6 +33,12 @@ export interface DimensionRow {
   count: bigint | number;
 }
 
+export type VisitDimension = 'country' | 'os' | 'browser';
+
+export interface DimensionVisitRow extends DimensionRow {
+  dim: VisitDimension;
+}
+
 export interface SiteClickRow {
   site_name: string;
   site_href: string;
@@ -129,6 +135,21 @@ export class MonitoringRepository {
         created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT uk_page_device_country_os_browser_day UNIQUE (path, device_type, country_code, os_name, browser_name, visit_day)
       )
+    `;
+    // 일별 방문 추이 뷰: apm_page_visits를 visit_day로 합산해 날짜별 집계를 바로 조회(pgAdmin 등).
+    // 별도 저장/동기화 없이 항상 최신. SELECT * FROM apm_page_visit_daily;
+    await this.prisma.$executeRaw`
+      CREATE OR REPLACE VIEW apm_page_visit_daily AS
+      SELECT visit_day,
+             SUM(visits)                                        AS total,
+             SUM(visits) FILTER (WHERE device_type = 'desktop') AS desktop,
+             SUM(visits) FILTER (WHERE device_type = 'mobile')  AS mobile,
+             SUM(visits) FILTER (WHERE device_type = 'tablet')  AS tablet,
+             SUM(visits) FILTER (WHERE device_type = 'bot')     AS bot,
+             COUNT(*)                                           AS rows
+      FROM apm_page_visits
+      GROUP BY visit_day
+      ORDER BY visit_day DESC
     `;
     await this.prisma.$executeRaw`
       CREATE TABLE IF NOT EXISTS apm_request_timings (
@@ -443,20 +464,21 @@ export class MonitoringRepository {
   }
 
   async findPageVisitSeriesDays(days: number) {
-    // visit_day(방문 날짜)별 visits 합 = 그날 실제 방문 횟수. generate_series로 빈 날도 0.
-    // 일자 경계는 한국시간(Asia/Seoul) 기준 — DB 서버 타임존(프로덕션=UTC)과 무관하게 '오늘'까지 표시.
+    // 일별 방문 추이: 날짜축(generate_series)에 apm_page_visit_daily 뷰를 LEFT JOIN.
+    //   - 합계는 뷰(visit_day별 visits 합)에서 와서 pgAdmin 값과 일치.
+    //   - 방문 0인 날(오늘 포함)도 COALESCE로 0을 채워 그래프가 끊기지 않음.
+    //   - 일자 경계는 한국시간(Asia/Seoul) 기준 — 최근 days일까지.
     return this.prisma.$queryRaw<
       Array<{ bucket: string; count: bigint | number }>
     >`
       SELECT TO_CHAR(d.day, 'MM-DD') AS bucket,
-             COALESCE(SUM(p.visits), 0) AS count
+             COALESCE(v.total, 0) AS count
       FROM generate_series(
              ((NOW() AT TIME ZONE 'Asia/Seoul')::date - ((${days}::int - 1) * INTERVAL '1 day'))::date,
              (NOW() AT TIME ZONE 'Asia/Seoul')::date,
              INTERVAL '1 day'
            ) AS d(day)
-      LEFT JOIN apm_page_visits p ON p.visit_day = d.day
-      GROUP BY d.day
+      LEFT JOIN apm_page_visit_daily v ON v.visit_day = d.day
       ORDER BY d.day ASC
     `;
   }
@@ -555,16 +577,32 @@ export class MonitoringRepository {
     `;
   }
 
-  async findCountryVisits() {
-    return this.findDimensionRows('country_code');
-  }
-
-  async findOsVisits() {
-    return this.findDimensionRows('os_name');
-  }
-
-  async findBrowserVisits() {
-    return this.findDimensionRows('browser_name');
+  /**
+   * 국가/OS/브라우저별 방문 합계(각 차원 상위 20)를 한 번의 왕복으로 조회.
+   * 세 차원을 UNION ALL로 모으고 차원별 ROW_NUMBER로 상위 20만 남김 — 집계는 DB가 수행.
+   */
+  async findDimensionVisits(): Promise<DimensionVisitRow[]> {
+    return this.prisma.$queryRaw<DimensionVisitRow[]>`
+      WITH agg AS (
+        SELECT 'country' AS dim, country_code AS name, SUM(visits) AS count
+        FROM apm_page_visits GROUP BY country_code
+        UNION ALL
+        SELECT 'os' AS dim, os_name AS name, SUM(visits) AS count
+        FROM apm_page_visits GROUP BY os_name
+        UNION ALL
+        SELECT 'browser' AS dim, browser_name AS name, SUM(visits) AS count
+        FROM apm_page_visits GROUP BY browser_name
+      ),
+      ranked AS (
+        SELECT dim, name, count,
+               ROW_NUMBER() OVER (PARTITION BY dim ORDER BY count DESC) AS rn
+        FROM agg
+      )
+      SELECT dim, name, count
+      FROM ranked
+      WHERE rn <= 20
+      ORDER BY dim, count DESC
+    `;
   }
 
   async findYoutubeClickTotal(): Promise<number> {
@@ -786,20 +824,6 @@ export class MonitoringRepository {
       chunkSize,
     );
     return deleted.length;
-  }
-
-  private async findDimensionRows(
-    columnName: 'country_code' | 'os_name' | 'browser_name',
-  ) {
-    return this.prisma.$queryRawUnsafe<DimensionRow[]>(
-      `
-      SELECT ${columnName} AS name, SUM(visits) AS count
-      FROM apm_page_visits
-      GROUP BY ${columnName}
-      ORDER BY count DESC
-      LIMIT 20
-      `,
-    );
   }
 
   private async deleteRequestTimingRowsOlderThan(

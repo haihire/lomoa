@@ -529,6 +529,8 @@ export class MonitoringRepository {
   }
 
   async findSectionSeries(bucketHours: number, rangeDays: number) {
+    // 1일 보기(시간 버킷)만 시각 표시, 그 외(일 버킷)는 날짜만 표시
+    const labelFormat = bucketHours < 24 ? 'MM-DD HH24:MI' : 'MM-DD';
     // 빈 시간 버킷도 채우기:
     //   buckets(시간축) × labels(api_key) 조합을 만들고 실제 데이터를 LEFT JOIN.
     //   데이터 없는 버킷은 count=0, avg_duration_ms=NULL(서비스에서 0 처리).
@@ -559,7 +561,7 @@ export class MonitoringRepository {
         SELECT DISTINCT b.bucket_start, l.api_key
         FROM buckets b CROSS JOIN labels l
       )
-      SELECT TO_CHAR(grid.bucket_start, 'MM-DD HH24:MI') AS bucket,
+      SELECT TO_CHAR(grid.bucket_start, ${labelFormat}) AS bucket,
              grid.api_key AS label,
              ROUND(AVG(pb.duration_ms))::int AS avg_duration_ms,
              COUNT(pb.duration_ms) AS count

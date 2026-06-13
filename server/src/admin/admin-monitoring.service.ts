@@ -189,7 +189,7 @@ export class AdminMonitoringService implements OnModuleInit {
     }));
   }
 
-  @Cron('0 */10 * * * *')
+  @Cron('0 0 * * * *')
   async probeApis() {
     const base =
       process.env.MONITORING_PROBE_BASE_URL ??
@@ -258,16 +258,8 @@ export class AdminMonitoringService implements OnModuleInit {
     pvDays = 14,
   ): Promise<AdminMonitoringDashboard> {
     const safeRangeDays = Math.max(1, Math.min(30, Math.trunc(rangeDays)));
-    const bucketHours =
-      safeRangeDays === 1
-        ? 1
-        : safeRangeDays === 3
-          ? 3
-          : safeRangeDays === 7
-            ? 7
-            : safeRangeDays === 10
-              ? 12
-              : 30;
+    // 섹션(기능별 응답) 차트 버킷: 1일 보기만 시간 단위, 그 외는 일(24h) 단위로 묶어 날짜만 표시.
+    const bucketHours = safeRangeDays <= 1 ? 1 : 24;
     const safePvDays = Math.max(1, Math.min(30, Math.trunc(pvDays)));
     // 서로 의존 없는 조회들은 병렬로(Promise.all) 실행 → 대시보드 로딩 = 가장 느린 1개 수준.
     const [

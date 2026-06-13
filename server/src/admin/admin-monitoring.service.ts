@@ -177,13 +177,28 @@ export class AdminMonitoringService implements OnModuleInit {
     const base =
       process.env.MONITORING_PROBE_BASE_URL ??
       `http://127.0.0.1:${process.env.PORT ?? 3001}`;
-    // 핵심 경로를 주기적으로 호출만 한다. 응답시간/상태코드는 전역 미들웨어가
-    // apm_request_timings에 기록하므로 여기서 따로 저장하지 않는다(이중 기록 제거).
+    // 핵심 경로를 주기적으로 호출. 성공하면 응답시간/상태코드는 전역 미들웨어가
+    // apm_request_timings에 기록한다(이중 기록 제거). 단 fetch 자체가 실패(네트워크/타임아웃)하면
+    // 미들웨어가 돌지 않으므로, 장애가 누락되지 않도록 여기서 실패(status 0)를 직접 기록한다.
     for (const path of this.probeTargets) {
+      const started = process.hrtime.bigint();
       try {
-        await fetch(`${base}${path}`, { method: 'GET', cache: 'no-store' });
+        await fetch(`${base}${path}`, {
+          method: 'GET',
+          cache: 'no-store',
+          signal: AbortSignal.timeout(5000),
+        });
       } catch {
-        // 실패해도 무시 — 미들웨어가 상태코드까지 기록함
+        const durationMs = Number(process.hrtime.bigint() - started) / 1_000_000;
+        const name = path.split('?')[0]; // 미들웨어 기록과 동일하게 쿼리스트링 제거
+        void this.recordRequest({
+          scope: 'route',
+          name,
+          path: name,
+          method: 'GET',
+          statusCode: 0,
+          durationMs,
+        }).catch(() => undefined);
       }
     }
   }

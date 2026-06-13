@@ -45,30 +45,13 @@ export class AdminMonitoringService implements OnModuleInit {
   private readonly logger = new Logger(AdminMonitoringService.name);
   private readonly SLOW_THRESHOLD_MS = 1200;
   private readonly MONITORING_METRIC_RETENTION_DAYS = 30;
-  private readonly probeTargets: Array<{
-    apiKey: string;
-    path: string;
-    method: 'GET';
-    cacheType: 'redis' | 'no-cache';
-  }> = [
-    {
-      apiKey: 'sites',
-      path: '/api/sites',
-      method: 'GET',
-      cacheType: 'no-cache',
-    },
-    {
-      apiKey: 'stat-builds',
-      path: '/api/characters/stat-builds',
-      method: 'GET',
-      cacheType: 'redis',
-    },
-    {
-      apiKey: 'youtube',
-      path: '/api/streamers/popular?offset=0&limit=8',
-      method: 'GET',
-      cacheType: 'redis',
-    },
+  // 주기적으로 호출해 응답시간 샘플을 보장하는 핵심 경로들.
+  // 호출 자체가 전역 미들웨어로 apm_request_timings에 기록됨(별도 저장 없음).
+  // 경로→라벨 매핑은 findSectionSeries(repository)에 정의됨 — 변경 시 함께 맞출 것.
+  private readonly probeTargets: string[] = [
+    '/api/sites',
+    '/api/characters/stat-builds',
+    '/api/streamers/popular?offset=0&limit=8',
   ];
   constructor(private readonly monitoringRepo: MonitoringRepository) {}
 
@@ -194,34 +177,14 @@ export class AdminMonitoringService implements OnModuleInit {
     const base =
       process.env.MONITORING_PROBE_BASE_URL ??
       `http://127.0.0.1:${process.env.PORT ?? 3001}`;
-    for (const target of this.probeTargets) {
-      const started = process.hrtime.bigint();
-      let statusCode = 0;
-      let success = false;
+    // 핵심 경로를 주기적으로 호출만 한다. 응답시간/상태코드는 전역 미들웨어가
+    // apm_request_timings에 기록하므로 여기서 따로 저장하지 않는다(이중 기록 제거).
+    for (const path of this.probeTargets) {
       try {
-        const res = await fetch(`${base}${target.path}`, {
-          method: target.method,
-          cache: 'no-store',
-        });
-        statusCode = res.status;
-        success = res.ok;
+        await fetch(`${base}${path}`, { method: 'GET', cache: 'no-store' });
       } catch {
-        statusCode = 0;
-        success = false;
+        // 실패해도 무시 — 미들웨어가 상태코드까지 기록함
       }
-      const durationMs = Math.max(
-        0,
-        Math.round(Number(process.hrtime.bigint() - started) / 1_000_000),
-      );
-      await this.monitoringRepo.recordApiProbe({
-        apiKey: target.apiKey,
-        path: target.path,
-        method: target.method,
-        cacheType: target.cacheType,
-        statusCode,
-        durationMs,
-        isSuccess: success,
-      });
     }
   }
 
@@ -233,10 +196,6 @@ export class AdminMonitoringService implements OnModuleInit {
           'apm_request_timings',
           this.MONITORING_METRIC_RETENTION_DAYS,
         );
-      const deletedProbes = await this.monitoringRepo.deleteMetricRowsOlderThan(
-        'monitoring_api_probes',
-        this.MONITORING_METRIC_RETENTION_DAYS,
-      );
       const deletedPageLoads =
         await this.monitoringRepo.deleteMetricRowsOlderThan(
           'apm_page_load_timings',
@@ -244,7 +203,7 @@ export class AdminMonitoringService implements OnModuleInit {
         );
 
       this.logger.log(
-        `monitoring retention cleanup completed: requests=${deletedRequests}, probes=${deletedProbes}, pageLoads=${deletedPageLoads}`,
+        `monitoring retention cleanup completed: requests=${deletedRequests}, pageLoads=${deletedPageLoads}`,
       );
     } catch (err: unknown) {
       this.logger.warn(

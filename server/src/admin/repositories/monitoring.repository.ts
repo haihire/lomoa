@@ -46,10 +46,7 @@ export interface SiteClickRow {
   click_count: bigint | number;
 }
 
-type RetentionTable =
-  | 'apm_request_timings'
-  | 'monitoring_api_probes'
-  | 'apm_page_load_timings';
+type RetentionTable = 'apm_request_timings' | 'apm_page_load_timings';
 
 export interface PageLoadSeriesRow {
   bucket: string;
@@ -113,9 +110,6 @@ export class MonitoringRepository {
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'apm_youtube_clicks_device_type') THEN
           CREATE TYPE apm_youtube_clicks_device_type AS ENUM ('mobile', 'desktop', 'tablet', 'bot', 'unknown');
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'monitoring_api_probes_cache_type') THEN
-          CREATE TYPE monitoring_api_probes_cache_type AS ENUM ('redis', 'no-cache');
-        END IF;
       END $$;
     `;
 
@@ -167,19 +161,6 @@ export class MonitoringRepository {
       )
     `;
     await this.prisma.$executeRaw`
-      CREATE TABLE IF NOT EXISTS monitoring_api_probes (
-        id BIGSERIAL PRIMARY KEY,
-        api_key VARCHAR(100) NOT NULL,
-        path VARCHAR(255) NOT NULL,
-        method VARCHAR(10) NOT NULL,
-        cache_type monitoring_api_probes_cache_type NOT NULL DEFAULT 'no-cache',
-        status_code INT NOT NULL,
-        duration_ms INT NOT NULL,
-        is_success BOOLEAN NOT NULL DEFAULT FALSE,
-        created_at TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )
-    `;
-    await this.prisma.$executeRaw`
       CREATE TABLE IF NOT EXISTS apm_site_clicks (
         id BIGSERIAL PRIMARY KEY,
         site_name VARCHAR(255) NOT NULL,
@@ -218,10 +199,6 @@ export class MonitoringRepository {
       .$executeRaw`CREATE INDEX IF NOT EXISTS idx_apm_request_timings_created_at ON apm_request_timings(created_at)`;
     await this.prisma
       .$executeRaw`CREATE INDEX IF NOT EXISTS idx_apm_request_timings_scope_name ON apm_request_timings(scope, name)`;
-    await this.prisma
-      .$executeRaw`CREATE INDEX IF NOT EXISTS idx_monitoring_api_probes_created_at ON monitoring_api_probes(created_at)`;
-    await this.prisma
-      .$executeRaw`CREATE INDEX IF NOT EXISTS idx_monitoring_api_probes_api_key ON monitoring_api_probes(api_key)`;
     await this.prisma
       .$executeRaw`CREATE INDEX IF NOT EXISTS idx_apm_site_clicks_created_at ON apm_site_clicks(created_at)`;
     await this.prisma
@@ -357,31 +334,6 @@ export class MonitoringRepository {
         ${input.videoTitle},
         ${input.channelTitle},
         ${input.deviceType}::apm_youtube_clicks_device_type,
-        NOW()
-      )
-    `;
-  }
-
-  async recordApiProbe(input: {
-    apiKey: string;
-    path: string;
-    method: 'GET';
-    cacheType: 'redis' | 'no-cache';
-    statusCode: number;
-    durationMs: number;
-    isSuccess: boolean;
-  }) {
-    await this.prisma.$executeRaw`
-      INSERT INTO monitoring_api_probes
-        (api_key, path, method, cache_type, status_code, duration_ms, is_success, created_at)
-      VALUES (
-        ${input.apiKey},
-        ${input.path},
-        ${input.method},
-        ${input.cacheType}::monitoring_api_probes_cache_type,
-        ${input.statusCode},
-        ${input.durationMs},
-        ${input.isSuccess},
         NOW()
       )
     `;
@@ -529,21 +481,31 @@ export class MonitoringRepository {
   }
 
   async findSectionSeries(bucketHours: number, rangeDays: number) {
+    // 1일 보기(시간 버킷)만 시각 표시, 그 외(일 버킷)는 날짜만 표시
+    const labelFormat = bucketHours < 24 ? 'MM-DD HH24:MI' : 'MM-DD';
     // 빈 시간 버킷도 채우기:
     //   buckets(시간축) × labels(api_key) 조합을 만들고 실제 데이터를 LEFT JOIN.
     //   데이터 없는 버킷은 count=0, avg_duration_ms=NULL(서비스에서 0 처리).
     //   버킷 경계는 epoch floor 방식으로 통일해 데이터 버킷과 정확히 매칭.
     return this.prisma.$queryRaw<TimedGroupRow[]>`
-      WITH probe_buckets AS (
+      WITH targets(path, api_key) AS (
+        VALUES
+          ('/api/sites', 'sites'),
+          ('/api/characters/stat-builds', 'stat-builds'),
+          ('/api/streamers/popular', 'youtube')
+      ),
+      probe_buckets AS (
         SELECT
-          TO_TIMESTAMP(FLOOR(EXTRACT(EPOCH FROM created_at) / (${bucketHours} * 3600)) * (${bucketHours} * 3600)) AS bucket_start,
-          api_key,
-          duration_ms
-        FROM monitoring_api_probes
-        WHERE created_at >= NOW() - (${rangeDays}::int * INTERVAL '1 day')
+          TO_TIMESTAMP(FLOOR(EXTRACT(EPOCH FROM r.created_at) / (${bucketHours} * 3600)) * (${bucketHours} * 3600)) AS bucket_start,
+          t.api_key,
+          r.duration_ms
+        FROM apm_request_timings r
+        JOIN targets t ON t.path = r.name
+        WHERE r.scope = 'route'
+          AND r.created_at >= NOW() - (${rangeDays}::int * INTERVAL '1 day')
       ),
       labels AS (
-        SELECT DISTINCT api_key FROM probe_buckets
+        SELECT api_key FROM targets
       ),
       buckets AS (
         SELECT TO_TIMESTAMP(
@@ -559,7 +521,7 @@ export class MonitoringRepository {
         SELECT DISTINCT b.bucket_start, l.api_key
         FROM buckets b CROSS JOIN labels l
       )
-      SELECT TO_CHAR(grid.bucket_start, 'MM-DD HH24:MI') AS bucket,
+      SELECT TO_CHAR(grid.bucket_start, ${labelFormat}) AS bucket,
              grid.api_key AS label,
              ROUND(AVG(pb.duration_ms))::int AS avg_duration_ms,
              COUNT(pb.duration_ms) AS count
@@ -804,8 +766,6 @@ export class MonitoringRepository {
     switch (tableName) {
       case 'apm_request_timings':
         return this.deleteRequestTimingRowsOlderThan(retentionDays, chunkSize);
-      case 'monitoring_api_probes':
-        return this.deleteApiProbeRowsOlderThan(retentionDays, chunkSize);
       case 'apm_page_load_timings':
         return this.deleteRowsOlderThan(
           'apm_page_load_timings',
@@ -860,27 +820,6 @@ export class MonitoringRepository {
     return deleted.length;
   }
 
-  private async deleteApiProbeRowsOlderThan(
-    retentionDays: number,
-    chunkSize: number,
-  ) {
-    const deleted = await this.prisma.$queryRawUnsafe<Array<{ id: bigint }>>(
-      `
-      DELETE FROM monitoring_api_probes
-      WHERE id IN (
-        SELECT id
-        FROM monitoring_api_probes
-        WHERE created_at < NOW() - ($1::int * INTERVAL '1 day')
-        ORDER BY id ASC
-        LIMIT $2
-      )
-      RETURNING id
-      `,
-      retentionDays,
-      chunkSize,
-    );
-    return deleted.length;
-  }
 }
 
 function sleep(ms: number) {

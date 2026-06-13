@@ -599,7 +599,7 @@ export default function MonitoringPage() {
           <div className="admin-card p-3">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-sm font-semibold">
-                기능별 응답 추이 (10분 자동점검)
+                기능별 응답 추이 (1시간 자동점검)
               </p>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-[color:var(--admin-text-muted)]">

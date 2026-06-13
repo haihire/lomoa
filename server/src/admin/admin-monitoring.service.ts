@@ -45,30 +45,13 @@ export class AdminMonitoringService implements OnModuleInit {
   private readonly logger = new Logger(AdminMonitoringService.name);
   private readonly SLOW_THRESHOLD_MS = 1200;
   private readonly MONITORING_METRIC_RETENTION_DAYS = 30;
-  private readonly probeTargets: Array<{
-    apiKey: string;
-    path: string;
-    method: 'GET';
-    cacheType: 'redis' | 'no-cache';
-  }> = [
-    {
-      apiKey: 'sites',
-      path: '/api/sites',
-      method: 'GET',
-      cacheType: 'no-cache',
-    },
-    {
-      apiKey: 'stat-builds',
-      path: '/api/characters/stat-builds',
-      method: 'GET',
-      cacheType: 'redis',
-    },
-    {
-      apiKey: 'youtube',
-      path: '/api/streamers/popular?offset=0&limit=8',
-      method: 'GET',
-      cacheType: 'redis',
-    },
+  // 주기적으로 호출해 응답시간 샘플을 보장하는 핵심 경로들.
+  // 호출 자체가 전역 미들웨어로 apm_request_timings에 기록됨(별도 저장 없음).
+  // 경로→라벨 매핑은 findSectionSeries(repository)에 정의됨 — 변경 시 함께 맞출 것.
+  private readonly probeTargets: string[] = [
+    '/api/sites',
+    '/api/characters/stat-builds',
+    '/api/streamers/popular?offset=0&limit=8',
   ];
   constructor(private readonly monitoringRepo: MonitoringRepository) {}
 
@@ -189,40 +172,38 @@ export class AdminMonitoringService implements OnModuleInit {
     }));
   }
 
-  @Cron('0 */10 * * * *')
+  @Cron('0 0 * * * *')
   async probeApis() {
     const base =
       process.env.MONITORING_PROBE_BASE_URL ??
       `http://127.0.0.1:${process.env.PORT ?? 3001}`;
-    for (const target of this.probeTargets) {
-      const started = process.hrtime.bigint();
-      let statusCode = 0;
-      let success = false;
-      try {
-        const res = await fetch(`${base}${target.path}`, {
-          method: target.method,
-          cache: 'no-store',
-        });
-        statusCode = res.status;
-        success = res.ok;
-      } catch {
-        statusCode = 0;
-        success = false;
-      }
-      const durationMs = Math.max(
-        0,
-        Math.round(Number(process.hrtime.bigint() - started) / 1_000_000),
-      );
-      await this.monitoringRepo.recordApiProbe({
-        apiKey: target.apiKey,
-        path: target.path,
-        method: target.method,
-        cacheType: target.cacheType,
-        statusCode,
-        durationMs,
-        isSuccess: success,
-      });
-    }
+    // 핵심 경로를 병렬 호출. 성공하면 응답시간/상태코드는 전역 미들웨어가
+    // apm_request_timings에 기록한다(이중 기록 제거). 단 fetch 자체가 실패(네트워크/타임아웃)하면
+    // 미들웨어가 돌지 않으므로, 장애가 누락되지 않도록 catch에서 실패(status 0)를 직접 기록하고 완료까지 대기한다.
+    await Promise.all(
+      this.probeTargets.map(async (path) => {
+        const started = process.hrtime.bigint();
+        try {
+          await fetch(`${base}${path}`, {
+            method: 'GET',
+            cache: 'no-store',
+            signal: AbortSignal.timeout(5000),
+          });
+        } catch {
+          const durationMs =
+            Number(process.hrtime.bigint() - started) / 1_000_000;
+          const name = path.split('?')[0]; // 미들웨어 기록과 동일하게 쿼리스트링 제거
+          await this.recordRequest({
+            scope: 'route',
+            name,
+            path: name,
+            method: 'GET',
+            statusCode: 0,
+            durationMs,
+          }).catch(() => undefined);
+        }
+      }),
+    );
   }
 
   @Cron('0 0 3 * * *')
@@ -233,10 +214,6 @@ export class AdminMonitoringService implements OnModuleInit {
           'apm_request_timings',
           this.MONITORING_METRIC_RETENTION_DAYS,
         );
-      const deletedProbes = await this.monitoringRepo.deleteMetricRowsOlderThan(
-        'monitoring_api_probes',
-        this.MONITORING_METRIC_RETENTION_DAYS,
-      );
       const deletedPageLoads =
         await this.monitoringRepo.deleteMetricRowsOlderThan(
           'apm_page_load_timings',
@@ -244,7 +221,7 @@ export class AdminMonitoringService implements OnModuleInit {
         );
 
       this.logger.log(
-        `monitoring retention cleanup completed: requests=${deletedRequests}, probes=${deletedProbes}, pageLoads=${deletedPageLoads}`,
+        `monitoring retention cleanup completed: requests=${deletedRequests}, pageLoads=${deletedPageLoads}`,
       );
     } catch (err: unknown) {
       this.logger.warn(
@@ -258,16 +235,8 @@ export class AdminMonitoringService implements OnModuleInit {
     pvDays = 14,
   ): Promise<AdminMonitoringDashboard> {
     const safeRangeDays = Math.max(1, Math.min(30, Math.trunc(rangeDays)));
-    const bucketHours =
-      safeRangeDays === 1
-        ? 1
-        : safeRangeDays === 3
-          ? 3
-          : safeRangeDays === 7
-            ? 7
-            : safeRangeDays === 10
-              ? 12
-              : 30;
+    // 섹션(기능별 응답) 차트 버킷: 1일 보기만 시간 단위, 그 외는 일(24h) 단위로 묶어 날짜만 표시.
+    const bucketHours = safeRangeDays <= 1 ? 1 : 24;
     const safePvDays = Math.max(1, Math.min(30, Math.trunc(pvDays)));
     // 서로 의존 없는 조회들은 병렬로(Promise.all) 실행 → 대시보드 로딩 = 가장 느린 1개 수준.
     const [
